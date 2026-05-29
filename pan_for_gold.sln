@@ -1,0 +1,30 @@
+﻿Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.5.2.0
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "pan_for_gold", "pan_for_gold.csproj", "{184D08D5-1301-81C5-971C-2EB576D789D4}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "pan_for_gold.Tests", "tests\pan_for_gold.Tests.csproj", "{CEB3C685-C7BF-40CE-AC76-CD3F35DC9138}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{184D08D5-1301-81C5-971C-2EB576D789D4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{184D08D5-1301-81C5-971C-2EB576D789D4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{184D08D5-1301-81C5-971C-2EB576D789D4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{184D08D5-1301-81C5-971C-2EB576D789D4}.Release|Any CPU.Build.0 = Release|Any CPU
+		{CEB3C685-C7BF-40CE-AC76-CD3F35DC9138}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{CEB3C685-C7BF-40CE-AC76-CD3F35DC9138}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{CEB3C685-C7BF-40CE-AC76-CD3F35DC9138}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{CEB3C685-C7BF-40CE-AC76-CD3F35DC9138}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {9B55AC1B-1851-414D-BB4B-A14BAD6B508E}
+	EndGlobalSection
+EndGlobal

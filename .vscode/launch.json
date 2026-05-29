@@ -1,0 +1,21 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug Tests",
+            "type": "coreclr",
+            "request": "launch",
+            "program": "dotnet",
+            "args": ["exec", "${workspaceFolder}/tests/bin/Debug/net8.0/pan_for_gold.Tests.dll"],
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "preLaunchTask": "build-tests",
+            "exceptionOptions": [
+                {
+                    "path": [{ "names": ["*"] }],
+                    "breakMode": "unhandled"
+                }
+            ]
+        }
+    ]
+}

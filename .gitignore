@@ -1,0 +1,5 @@
+bin/
+.godot/
+*.uid
+tests/obj
+_archive*

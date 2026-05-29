@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls -la /c/Users/nickd/Documents/Projects/godot-claude/.*)",
+      "Bash(mkdir -p scenes/main scenes/overworld scenes/battle scenes/dialogue scenes/ui scripts/autoloads scripts/overworld scripts/battle scripts/dialogue resources/creatures resources/moves resources/dialogues assets/sprites assets/audio assets/fonts)",
+      "Bash(touch scenes/main/.gitkeep scenes/overworld/.gitkeep scenes/battle/.gitkeep scenes/dialogue/.gitkeep scenes/ui/.gitkeep scripts/overworld/.gitkeep scripts/battle/.gitkeep scripts/dialogue/.gitkeep resources/creatures/.gitkeep resources/moves/.gitkeep resources/dialogues/.gitkeep assets/sprites/.gitkeep assets/audio/.gitkeep assets/fonts/.gitkeep)",
+      "Bash(\"./bin/Godot_v4.6.1-stable_win64.exe\" --path . --headless --quit)",
+      "Bash(echo \"Exit code: $?\")",
+      "Read(//c/Users/nickd/.config/mise/**)",
+      "Read(//c/Users/nickd/AppData/Roaming/mise/**)",
+      "Bash(mise settings)",
+      "Bash(mise settings ls)",
+      "Bash(mise run check)",
+      "Bash(echo \"Exit: $?\")",
+      "Bash(mise help settings)",
+      "Bash(mise settings -a)",
+      "Bash(mise settings set -l windows_default_inline_shell_args \"bash -c\")",
+      "Bash(mise tasks)",
+      "Bash(bin/Godot_v4.6.1-stable_win64.exe --path . --headless --import)",
+      "Bash(bin/Godot_v4.6.1-stable_win64.exe --path . --headless --quit)",
+      "Bash(\"c:/Users/nickd/Documents/Projects/godot-claude/scripts/overworld/iron_crab.gd\":*)",
+      "Bash(echo \"EXIT: $?\")",
+      "Bash(mise run:*)",
+      "WebSearch",
+      "Bash(dotnet build:*)",
+      "Bash(dotnet test:*)",
+      "Bash(godot --version)"
+    ]
+  }
+}

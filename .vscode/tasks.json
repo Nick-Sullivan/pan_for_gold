@@ -1,0 +1,12 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "build-tests",
+            "type": "shell",
+            "command": "dotnet build tests/pan_for_gold.Tests.csproj",
+            "group": "build",
+            "presentation": { "reveal": "silent" }
+        }
+    ]
+}
