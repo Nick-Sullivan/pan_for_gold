@@ -10,7 +10,16 @@ func _ready() -> void:
 	var hud: CanvasLayer = HudScript.new()
 	add_child(hud)
 
-	if "--screenshot" in OS.get_cmdline_user_args():
+	# Wire input signals once Grid/HUD have registered their groups. Deferred so
+	# their _Ready runs first. GameRunner persists across the title->game swap.
+	GameRunner.call_deferred("ConnectViewSignals")
+
+	var args := OS.get_cmdline_user_args()
+	if "--run-tests" in args:
+		# In-engine integration harness (C# bootstrap node drives it).
+		var bootstrap = preload("res://tests/integration/IntegrationTestBootstrap.cs").new()
+		add_child(bootstrap)
+	elif "--screenshot" in args:
 		_take_screenshot()
 
 func _take_screenshot() -> void:

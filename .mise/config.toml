@@ -1,5 +1,4 @@
 [tools]
-rtk = "0.34.1"
 watchexec = "latest"
 
 [tasks.run]
@@ -19,8 +18,16 @@ description = "Verify the project boots headlessly (exit code 0 = clean)"
 run = "bin\\Godot_v4.5.2-stable_mono_win64\\Godot_v4.5.2-stable_mono_win64.exe --path . --headless --quit"
 
 [tasks.test]
-description = "Run C# xUnit tests"
-run = "dotnet test tests/pan_for_gold.Tests.csproj"
+description = "Run C# xUnit unit tests"
+run = "dotnet test tests/unit/pan_for_gold.Tests.csproj"
+
+[tasks.itest]
+description = "Run in-engine integration tests (boots Godot headless, exit 0 = pass)"
+run = "dotnet build && bin\\Godot_v4.5.2-stable_mono_win64\\Godot_v4.5.2-stable_mono_win64.exe --path . --headless --quit-after 1800 -- --run-tests"
+
+[tasks.itest-regen]
+description = "Regenerate fixture snapshots from their full (player-action) setups"
+run = "dotnet build && bin\\Godot_v4.5.2-stable_mono_win64\\Godot_v4.5.2-stable_mono_win64.exe --path . --headless --quit-after 1800 -- --run-tests --regen-fixtures"
 
 [tasks.editor]
 description = "Open the Godot editor"

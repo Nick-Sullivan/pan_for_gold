@@ -3,7 +3,13 @@
     <TargetFramework>net8.0</TargetFramework>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Remove="tests/**" />
+    <!-- tests/unit is the separate xUnit project; tests/integration is the in-engine
+         harness and IS compiled into the game so it can run inside Godot. -->
+    <Compile Remove="tests/unit/**" />
     <Compile Remove="_archive/**" />
+    <!-- Never glob generated sources out of intermediate/output dirs (the SDK only
+         auto-excludes this project's own obj/bin, not nested ones like tests/obj). -->
+    <Compile Remove="**/obj/**" />
+    <Compile Remove="**/bin/**" />
   </ItemGroup>
 </Project>

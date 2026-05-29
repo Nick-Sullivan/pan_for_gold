@@ -24,7 +24,11 @@
       "WebSearch",
       "Bash(dotnet build:*)",
       "Bash(dotnet test:*)",
-      "Bash(godot --version)"
+      "Bash(godot --version)",
+      "PowerShell(mise run itest; Write-Output \"EXITCODE=$LASTEXITCODE\")",
+      "PowerShell(mise run:*)",
+      "PowerShell(mise:*)",
+      "PowerShell(mise run check; Write-Output \"EXITCODE=$LASTEXITCODE\")"
     ]
   }
 }

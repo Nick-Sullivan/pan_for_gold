@@ -8,6 +8,7 @@ public partial class HUD : CanvasLayer
     [Signal] public delegate void ToolSelectedEventHandler(int tool);
     [Signal] public delegate void RegionSelectedEventHandler(int index);
     [Signal] public delegate void ZoneSwitchRequestedEventHandler(int zone);
+    [Signal] public delegate void SaveRequestedEventHandler();
 
     private const int Mhw = 22;
     private const int Mhh = 11;
@@ -160,6 +161,14 @@ public partial class HUD : CanvasLayer
         _toolShovelBtn.Visible = false;
         _toolShovelBtn.Pressed += () => EmitSignal(SignalName.ToolSelected, (int)GameState.ActiveTool.Shovel);
         toolHbox.AddChild(_toolShovelBtn);
+
+        equipBox.AddChild(new HSeparator());
+
+        var saveBtn = new Button();
+        saveBtn.Text = "Save";
+        saveBtn.CustomMinimumSize = new Vector2(0, 40);
+        saveBtn.Pressed += () => EmitSignal(SignalName.SaveRequested);
+        equipBox.AddChild(saveBtn);
 
         // Tab 2 — Shop
         var shopBox = new VBoxContainer();

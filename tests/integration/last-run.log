@@ -1,0 +1,10 @@
+Running 7 integration test(s)...
+[pass] boot/initial-state
+[pass] economy/pan-earns-gold
+[pass] economy/buy-shovel
+[pass] tile/dig-cycle
+[pass] region/unlock-and-switch
+[pass] persistence/save-load-roundtrip
+[pass] persistence/save-slots
+7 tests: 7 passed, 0 failed
+[harness] exit 0

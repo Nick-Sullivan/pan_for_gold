@@ -24,7 +24,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\pan_for_gold.csproj" ExcludeAssets="analyzers" />
+    <ProjectReference Include="..\..\pan_for_gold.csproj" ExcludeAssets="analyzers" />
   </ItemGroup>
 
 </Project>
