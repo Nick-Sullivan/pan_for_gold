@@ -27,12 +27,20 @@ public partial class HUD : CanvasLayer
     private readonly List<Polygon2D> _regionDiamonds = [];
     private readonly List<Control> _tabContents = [];
     private readonly List<Button> _tabButtons = [];
-    private readonly Label[] _questIndicators = new Label[2];
-    private readonly HBoxContainer[] _questRows = new HBoxContainer[2];
+    private readonly Label[] _questIndicators = new Label[QuestSystem.Defs.Length];
+    private readonly HBoxContainer[] _questRows = new HBoxContainer[QuestSystem.Defs.Length];
 
     private Control _villageSign;
     private Label _villageFlowLabel;
     private Label _villageGateLabel;
+
+    private Control _objectivePanel;
+    private Label _objectiveTitle;
+    private Label _objectiveHint;
+
+    private Control _villageDialog;
+    private Label _villageDialogName;
+    private Label _villageDialogText;
 
     public override void _Ready()
     {
@@ -49,6 +57,11 @@ public partial class HUD : CanvasLayer
         gs.ZoneChanged += OnZoneChanged;
         gs.QuestChanged += OnQuestChanged;
         gs.FlowChanged += OnFlowChangedSign;
+        gs.VillageFound += OnVillageDiscovered;
+
+        // A save where the village is already discovered keeps the Highlands
+        // toggle available (without replaying the discovery dialogue).
+        _zoneToggle.Visible = gs.VillageDiscovered;
     }
 
     public override void _Input(InputEvent @event)
@@ -236,14 +249,8 @@ public partial class HUD : CanvasLayer
         vbox.AddChild(questBox);
         _tabContents.Add(questBox);
 
-        (string title, string desc)[] questDefs =
-        [
-            ("Buy a Shovel",        "Purchase a shovel from the Shop tab."),
-            ("Reach the Right Edge","Guide the river to exit at the east edge."),
-        ];
-
         var gs2 = GameState.Instance;
-        for (int i = 0; i < questDefs.Length; i++)
+        for (int i = 0; i < QuestSystem.Defs.Length; i++)
         {
             var row = new HBoxContainer();
             row.AddThemeConstantOverride("separation", 8);
@@ -265,17 +272,142 @@ public partial class HUD : CanvasLayer
             row.AddChild(textCol);
 
             var titleLabel = new Label();
-            titleLabel.Text = questDefs[i].title;
+            titleLabel.Text = QuestSystem.Defs[i].Title;
             textCol.AddChild(titleLabel);
 
             var descLabel = new Label();
-            descLabel.Text = questDefs[i].desc;
+            descLabel.Text = QuestSystem.Defs[i].Hint;
             descLabel.AddThemeColorOverride("font_color", new Color(0.5f, 0.5f, 0.5f));
             descLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;
             textCol.AddChild(descLabel);
         }
 
         BuildVillageSign();
+        BuildObjectiveBanner();
+        BuildVillageDialog();
+    }
+
+    private void BuildVillageDialog()
+    {
+        // Full-screen dim that also blocks clicks behind the modal while shown.
+        var dim = new ColorRect();
+        dim.Color = new Color(0, 0, 0, 0.5f);
+        dim.SetAnchorsPreset(Control.LayoutPreset.FullRect);
+        dim.MouseFilter = Control.MouseFilterEnum.Stop;
+        AddChild(dim);
+        _villageDialog = dim;
+
+        var center = new CenterContainer();
+        center.SetAnchorsPreset(Control.LayoutPreset.FullRect);
+        dim.AddChild(center);
+
+        var style = new StyleBoxFlat();
+        style.BgColor = new Color(0.10f, 0.10f, 0.12f, 0.98f);
+        style.SetCornerRadiusAll(8);
+        style.SetContentMarginAll(16);
+        style.BorderColor = new Color(0.85f, 0.65f, 0.15f);
+        style.SetBorderWidthAll(2);
+
+        var panel = new PanelContainer();
+        panel.AddThemeStyleboxOverride("panel", style);
+        center.AddChild(panel);
+
+        var vb = new VBoxContainer();
+        vb.AddThemeConstantOverride("separation", 10);
+        vb.CustomMinimumSize = new Vector2(440, 0);
+        panel.AddChild(vb);
+
+        var header = new HBoxContainer();
+        header.AddThemeConstantOverride("separation", 10);
+        vb.AddChild(header);
+
+        // Placeholder portrait (per-village art is future work).
+        var portrait = new ColorRect();
+        portrait.Color = new Color(0.55f, 0.45f, 0.30f);
+        portrait.CustomMinimumSize = new Vector2(48, 48);
+        header.AddChild(portrait);
+
+        _villageDialogName = new Label();
+        _villageDialogName.AddThemeFontSizeOverride("font_size", 20);
+        _villageDialogName.AddThemeColorOverride("font_color", new Color(0.85f, 0.65f, 0.15f));
+        _villageDialogName.VerticalAlignment = VerticalAlignment.Center;
+        header.AddChild(_villageDialogName);
+
+        _villageDialogText = new Label();
+        _villageDialogText.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+        _villageDialogText.CustomMinimumSize = new Vector2(440, 0);
+        _villageDialogText.AddThemeColorOverride("font_color", new Color(0.9f, 0.9f, 0.9f));
+        vb.AddChild(_villageDialogText);
+
+        var continueBtn = new Button();
+        continueBtn.Text = "Continue";
+        continueBtn.CustomMinimumSize = new Vector2(0, 40);
+        continueBtn.Pressed += () => _villageDialog.Visible = false;
+        vb.AddChild(continueBtn);
+
+        _villageDialog.Visible = false;
+    }
+
+    private void OnVillageDiscovered()
+    {
+        _villageDialogName.Text = "Sediment, Village Elder";
+        _villageDialogText.Text =
+            $"Our river has run dry. We need at least {(int)GameState.VillageFlowThreshold} flow "
+            + "to live again — head to the highlands and change what the river carries.";
+        _villageDialog.Visible = true;
+        _zoneToggle.Visible = true;
+    }
+
+    private void BuildObjectiveBanner()
+    {
+        var style = new StyleBoxFlat();
+        style.BgColor = new Color(0.10f, 0.10f, 0.12f, 0.90f);
+        style.SetCornerRadiusAll(6);
+        style.SetContentMarginAll(10);
+
+        var panel = new PanelContainer();
+        panel.Position = new Vector2(10, 10);
+        panel.AddThemeStyleboxOverride("panel", style);
+        AddChild(panel);
+        _objectivePanel = panel;
+
+        var vb = new VBoxContainer();
+        vb.AddThemeConstantOverride("separation", 2);
+        vb.CustomMinimumSize = new Vector2(260, 0);
+        panel.AddChild(vb);
+
+        var heading = new Label();
+        heading.Text = "Objective";
+        heading.AddThemeFontSizeOverride("font_size", 14);
+        heading.AddThemeColorOverride("font_color", new Color(0.85f, 0.70f, 0.20f));
+        vb.AddChild(heading);
+
+        _objectiveTitle = new Label();
+        _objectiveTitle.AddThemeColorOverride("font_color", new Color(0.9f, 0.9f, 0.9f));
+        vb.AddChild(_objectiveTitle);
+
+        _objectiveHint = new Label();
+        _objectiveHint.AddThemeColorOverride("font_color", new Color(0.7f, 0.7f, 0.7f));
+        _objectiveHint.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+        vb.AddChild(_objectiveHint);
+
+        UpdateObjectiveBanner();
+    }
+
+    private void UpdateObjectiveBanner()
+    {
+        int i = QuestSystem.CurrentObjective();
+        if (i < 0)
+        {
+            _objectiveTitle.Text = "All objectives complete!";
+            _objectiveHint.Visible = false;
+        }
+        else
+        {
+            _objectiveTitle.Text = QuestSystem.Defs[i].Title;
+            _objectiveHint.Text = QuestSystem.Defs[i].Hint;
+            _objectiveHint.Visible = true;
+        }
     }
 
     private void BuildVillageSign()
@@ -393,8 +525,8 @@ public partial class HUD : CanvasLayer
     private void OnRegionUnlocked(int count)
     {
         AddRegionDiamond(count - 1);
-        if (count >= 2 && GameState.Instance.CurrentZone == 0)
-            _zoneToggle.Visible = true;
+        // The Highlands toggle is revealed on village discovery (OnVillageDiscovered),
+        // not merely on unlocking region 1.
     }
 
     private void OnRegionSwitched(int index)
@@ -423,7 +555,9 @@ public partial class HUD : CanvasLayer
 
     private void OnQuestChanged(int index)
     {
-        _questRows[index].Visible = false;
+        _questIndicators[index].Text = "✓";
+        _questIndicators[index].AddThemeColorOverride("font_color", new Color(0.85f, 0.70f, 0.20f));
+        UpdateObjectiveBanner();
     }
 
     private void OnFlowChangedSign()

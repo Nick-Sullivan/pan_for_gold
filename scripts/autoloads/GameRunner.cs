@@ -21,6 +21,7 @@ public partial class GameRunner : Node
     private RegionSystem _regions;
     private QuestSystem _quests;
     private GateSystem _gates;
+    private VillageSystem _village;
     private double _propagationTimer;
 
     private readonly SaveSystem _save = new();
@@ -40,6 +41,9 @@ public partial class GameRunner : Node
 
         _gates = new GateSystem(_regions);
         _gates.Connect();
+
+        _village = new VillageSystem();
+        _village.Connect();
 
         _water.InitTiles();
         _regions.Init();

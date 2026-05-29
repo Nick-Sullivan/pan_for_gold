@@ -78,13 +78,20 @@ public class Economy
     {
         var gs = GameState.Instance;
 
-        bool hasClaySource = false;
-        for (int z = 0; z < MapLayouts.Maps.Length && !hasClaySource; z++)
+        // Clay is only produced while a clay source is actually fed by a flowing
+        // river (mirrors the gold source). Merely having a clay source on the map
+        // is not enough — otherwise every bank accrues clay from the start.
+        // snap.Flow holds each region's flow (it's the same array TileFlowValues
+        // points at while that region is active).
+        bool hasActiveClaySource = false;
+        for (int z = 0; z < MapLayouts.Maps.Length && !hasActiveClaySource; z++)
             foreach (var snap in gs.GetZoneData(z))
-                for (int r = 0; r < GameState.Rows && !hasClaySource; r++)
-                    for (int c = 0; c < GameState.Cols && !hasClaySource; c++)
-                        if (snap.Tiles[r, c] == GameState.TileType.ClaySource) hasClaySource = true;
-        if (!hasClaySource) return;
+                if (HasActiveSource(GameState.TileType.ClaySource, snap.Tiles, snap.Flow))
+                {
+                    hasActiveClaySource = true;
+                    break;
+                }
+        if (!hasActiveClaySource) return;
 
         for (int z = 0; z < MapLayouts.Maps.Length; z++)
         {

@@ -17,6 +17,8 @@ public partial class GameState : Node
     public const float MaxBankFlow = 10f;
     public const float VillageFlowThreshold = 100f;
     public const float MaxTileClay = 10.0f;
+    public const int VillageRow = 0;
+    public const int VillageCol = 7;
 
     public static GameState Instance { get; private set; }
 
@@ -71,9 +73,13 @@ public partial class GameState : Node
     [Signal] public delegate void SpeedChangedEventHandler(float value);
     [Signal] public delegate void FlowChangedEventHandler();
     [Signal] public delegate void QuestChangedEventHandler(int index);
+    [Signal] public delegate void VillageFoundEventHandler();
 
-    // Quests
-    public bool[] QuestsComplete { get; private set; } = new bool[2];
+    // Quests — length matches QuestSystem.Defs.
+    public bool[] QuestsComplete { get; private set; } = new bool[3];
+
+    // Set the first time the player enters the village (zone 0, region 1).
+    public bool VillageDiscovered { get; internal set; }
 
     public override void _Ready()
     {
@@ -129,6 +135,7 @@ public partial class GameState : Node
         _zoneData[0].Clear();
         _zoneData[1].Clear();
         System.Array.Clear(QuestsComplete);
+        VillageDiscovered = false;
         TileFlowParent = InitFlowParent();
     }
 
@@ -160,6 +167,7 @@ public partial class GameState : Node
         public float RiverSpeed { get; set; }
         public int CurrentZone { get; set; }
         public bool[] Quests { get; set; }
+        public bool VillageDiscovered { get; set; }
         public ZoneDto[] Zones { get; set; }
     }
 
@@ -195,6 +203,7 @@ public partial class GameState : Node
             RiverSpeed = RiverSpeed,
             CurrentZone = CurrentZone,
             Quests = (bool[])QuestsComplete.Clone(),
+            VillageDiscovered = VillageDiscovered,
             Zones = zones,
         };
     }
@@ -210,6 +219,7 @@ public partial class GameState : Node
         Tool = (ActiveTool)snap.Tool;
         RiverSpeed = snap.RiverSpeed;
         System.Array.Copy(snap.Quests, QuestsComplete, System.Math.Min(snap.Quests.Length, QuestsComplete.Length));
+        VillageDiscovered = snap.VillageDiscovered;
 
         for (int z = 0; z < _zoneData.Length; z++)
         {

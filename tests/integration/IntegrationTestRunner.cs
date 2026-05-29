@@ -19,6 +19,10 @@ public static class IntegrationTestRunner
         new RegionUnlockSwitchTest(),
         new SaveLoadRoundTripTest(),
         new SaveSlotTest(),
+        new QuestShovelEdgeTest(),
+        new QuestVillageFlowTest(),
+        new ClaySourceTest(),
+        new VillageDiscoveryTest(),
     ];
 
     public static readonly List<IFixture> Fixtures =

@@ -1,7 +1,5 @@
 public class GateSystem
 {
-    private const int VillageRow = 0, VillageCol = 7;
-
     private readonly RegionSystem _regions;
     public bool IsGateOpen { get; private set; }
 
@@ -21,7 +19,7 @@ public class GateSystem
         if (gs.CurrentRegion != 1 || gs.RegionData.Count <= 1)
             return;
 
-        float villageFlow = gs.TileFlowValues[VillageRow, VillageCol];
+        float villageFlow = gs.TileFlowValues[GameState.VillageRow, GameState.VillageCol];
         bool shouldOpen = villageFlow >= GameState.VillageFlowThreshold;
 
         if (shouldOpen == IsGateOpen)

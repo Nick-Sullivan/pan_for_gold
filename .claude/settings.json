@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(mise run check; Write-Output \"EXITCODE=$LASTEXITCODE\")"
+    ]
+  }
+}
