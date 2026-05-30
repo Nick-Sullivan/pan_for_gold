@@ -4,14 +4,16 @@ using System.Text.Json;
 
 public partial class GameState : Node
 {
-    public enum TileType { Soil = 0, Bank = 1, River = 2, Channel = 3, Stone = 4, RiverSource = 5, Village = 6, Gate = 7, GoldSource = 8, ClaySource = 9 }
-    public enum ActiveTool { Pan = 0, Shovel = 1 }
+    public enum TileType { Soil = 0, Bank = 1, River = 2, Channel = 3, Stone = 4, RiverSource = 5, Village = 6, Gate = 7, GoldSource = 8, ClaySource = 9, Brick = 10 }
+    public enum ActiveTool { Pan = 0, Shovel = 1, Brick = 2 }
 
     public const int Cols = 14;
     public const int Rows = 14;
     public const float MaxTileGold = 10.0f;
     public const float RefillTime = 15.0f;
     public const int ShovelCost = 10;
+    public const int FurnaceCost = 20;
+    public const int BrickClayCost = 3;
     public const float FillDelayPerStep = 0.25f;
     public const int BaseSpeedTiles = 4;
     public const float MaxBankFlow = 10f;
@@ -26,6 +28,8 @@ public partial class GameState : Node
     public int Gold { get; internal set; }
     public int Clay { get; internal set; }
     public int Shovels { get; internal set; }
+    public int Bricks { get; internal set; }
+    public bool HasFurnace { get; internal set; }
     public ActiveTool Tool { get; internal set; } = ActiveTool.Pan;
     public float RiverSpeed { get; internal set; } = 1.0f;
 
@@ -66,6 +70,8 @@ public partial class GameState : Node
     [Signal] public delegate void TileClayChangedEventHandler(int col, int row, int amount);
     [Signal] public delegate void TileGoldChangedEventHandler(int col, int row, int amount);
     [Signal] public delegate void ShovelsChangedEventHandler(int newValue);
+    [Signal] public delegate void BricksChangedEventHandler(int newValue);
+    [Signal] public delegate void FurnaceChangedEventHandler(bool hasFurnace);
     [Signal] public delegate void ToolChangedEventHandler(int tool);
     [Signal] public delegate void ZoneChangedEventHandler(int zone);
     [Signal] public delegate void RegionUnlockedEventHandler(int count);
@@ -76,7 +82,7 @@ public partial class GameState : Node
     [Signal] public delegate void VillageFoundEventHandler();
 
     // Quests — length matches QuestSystem.Defs.
-    public bool[] QuestsComplete { get; private set; } = new bool[3];
+    public bool[] QuestsComplete { get; private set; } = new bool[7];
 
     // Set the first time the player enters the village (zone 0, region 1).
     public bool VillageDiscovered { get; internal set; }
@@ -125,6 +131,8 @@ public partial class GameState : Node
         Gold = 0;
         Clay = 0;
         Shovels = 0;
+        Bricks = 0;
+        HasFurnace = false;
         Tool = ActiveTool.Pan;
         RiverSpeed = 1.0f;
         CurrentZone = 0;
@@ -163,6 +171,8 @@ public partial class GameState : Node
         public int Gold { get; set; }
         public int Clay { get; set; }
         public int Shovels { get; set; }
+        public int Bricks { get; set; }
+        public bool HasFurnace { get; set; }
         public int Tool { get; set; }
         public float RiverSpeed { get; set; }
         public int CurrentZone { get; set; }
@@ -199,6 +209,8 @@ public partial class GameState : Node
             Gold = Gold,
             Clay = Clay,
             Shovels = Shovels,
+            Bricks = Bricks,
+            HasFurnace = HasFurnace,
             Tool = (int)Tool,
             RiverSpeed = RiverSpeed,
             CurrentZone = CurrentZone,
@@ -216,6 +228,8 @@ public partial class GameState : Node
         Gold = snap.Gold;
         Clay = snap.Clay;
         Shovels = snap.Shovels;
+        Bricks = snap.Bricks;
+        HasFurnace = snap.HasFurnace;
         Tool = (ActiveTool)snap.Tool;
         RiverSpeed = snap.RiverSpeed;
         System.Array.Copy(snap.Quests, QuestsComplete, System.Math.Min(snap.Quests.Length, QuestsComplete.Length));
@@ -246,6 +260,8 @@ public partial class GameState : Node
         EmitSignal(SignalName.GoldChanged, Gold);
         EmitSignal(SignalName.ClayChanged, Clay);
         EmitSignal(SignalName.ShovelsChanged, Shovels);
+        EmitSignal(SignalName.BricksChanged, Bricks);
+        EmitSignal(SignalName.FurnaceChanged, HasFurnace);
         EmitSignal(SignalName.ToolChanged, (int)Tool);
         EmitSignal(SignalName.FlowChanged);
     }

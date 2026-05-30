@@ -19,6 +19,10 @@ func _ready() -> void:
 		# In-engine integration harness (C# bootstrap node drives it).
 		var bootstrap = preload("res://tests/integration/IntegrationTestBootstrap.cs").new()
 		add_child(bootstrap)
+	elif "--shot" in args:
+		# Drive a named scenario and save a screenshot (C# bootstrap node).
+		var shot = preload("res://tests/integration/ScreenshotBootstrap.cs").new()
+		add_child(shot)
 	elif "--screenshot" in args:
 		_take_screenshot()
 

@@ -21,6 +21,7 @@ public class VillageDiscoveryTest : IIntegrationTest
         ctx.Actions.SwitchRegion(1);
         ctx.AssertEqual(1, gs.CurrentRegion, "in region 1");
         ctx.AssertTrue(gs.VillageDiscovered, "discovered after entering region 1");
+        ctx.AssertTrue(gs.QuestsComplete[3], "discovery completes the 'find the next map' quest");
 
         // Leaving and returning does not reset or re-trigger discovery.
         ctx.Actions.SwitchRegion(0);

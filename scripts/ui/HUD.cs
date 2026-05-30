@@ -9,16 +9,22 @@ public partial class HUD : CanvasLayer
     [Signal] public delegate void RegionSelectedEventHandler(int index);
     [Signal] public delegate void ZoneSwitchRequestedEventHandler(int zone);
     [Signal] public delegate void SaveRequestedEventHandler();
+    [Signal] public delegate void BuyFurnaceRequestedEventHandler();
+    [Signal] public delegate void MakeBrickRequestedEventHandler();
 
     private const int Mhw = 22;
     private const int Mhh = 11;
 
     private Label _goldLabel;
     private Label _clayLabel;
+    private Label _brickLabel;
     private Button _buyButton;
+    private Button _furnaceButton;
+    private Button _makeBrickButton;
     private Label _shopEmptyLabel;
     private Button _toolPanBtn;
     private Button _toolShovelBtn;
+    private Button _toolBrickBtn;
     private Control _mapContainer;
     private HBoxContainer _zoneToggle;
     private Button _lowlandsBtn;
@@ -49,8 +55,10 @@ public partial class HUD : CanvasLayer
 
         var gs = GameState.Instance;
         gs.GoldChanged += OnGoldChanged;
-        gs.ClayChanged += v => _clayLabel.Text = $"Clay: {v}";
+        gs.ClayChanged += OnClayChanged;
         gs.ShovelsChanged += OnShovelsChanged;
+        gs.BricksChanged += OnBricksChanged;
+        gs.FurnaceChanged += OnFurnaceChanged;
         gs.ToolChanged += OnToolChanged;
         gs.RegionUnlocked += OnRegionUnlocked;
         gs.RegionSwitched += OnRegionSwitched;
@@ -62,6 +70,15 @@ public partial class HUD : CanvasLayer
         // A save where the village is already discovered keeps the Highlands
         // toggle available (without replaying the discovery dialogue).
         _zoneToggle.Visible = gs.VillageDiscovered;
+
+        // Initialise the UI from current state. On load, ApplySnapshot's signals
+        // fired on the title screen before this game-scene HUD existed.
+        OnGoldChanged(gs.Gold);
+        OnClayChanged(gs.Clay);
+        OnShovelsChanged(gs.Shovels);
+        OnFurnaceChanged(gs.HasFurnace);
+        OnBricksChanged(gs.Bricks);
+        OnToolChanged((int)gs.Tool);
     }
 
     public override void _Input(InputEvent @event)
@@ -121,6 +138,12 @@ public partial class HUD : CanvasLayer
         _clayLabel.AddThemeFontSizeOverride("font_size", 24);
         vbox.AddChild(_clayLabel);
 
+        _brickLabel = new Label();
+        _brickLabel.Text = "Bricks: 0";
+        _brickLabel.AddThemeFontSizeOverride("font_size", 24);
+        _brickLabel.Visible = false;
+        vbox.AddChild(_brickLabel);
+
         vbox.AddChild(new HSeparator());
 
         // Tab bar
@@ -175,6 +198,16 @@ public partial class HUD : CanvasLayer
         _toolShovelBtn.Pressed += () => EmitSignal(SignalName.ToolSelected, (int)GameState.ActiveTool.Shovel);
         toolHbox.AddChild(_toolShovelBtn);
 
+        _toolBrickBtn = new Button();
+        _toolBrickBtn.Text = "Brick";
+        _toolBrickBtn.CustomMinimumSize = new Vector2(80, 48);
+        _toolBrickBtn.ToggleMode = true;
+        _toolBrickBtn.ButtonGroup = toolGroup;
+        _toolBrickBtn.Disabled = true;
+        _toolBrickBtn.Visible = false;
+        _toolBrickBtn.Pressed += () => EmitSignal(SignalName.ToolSelected, (int)GameState.ActiveTool.Brick);
+        toolHbox.AddChild(_toolBrickBtn);
+
         equipBox.AddChild(new HSeparator());
 
         var saveBtn = new Button();
@@ -196,6 +229,20 @@ public partial class HUD : CanvasLayer
         _buyButton.Disabled = true;
         _buyButton.Pressed += () => EmitSignal(SignalName.BuyShovelRequested);
         shopBox.AddChild(_buyButton);
+
+        _furnaceButton = new Button();
+        _furnaceButton.Text = $"Buy Furnace ({GameState.FurnaceCost}g)";
+        _furnaceButton.CustomMinimumSize = new Vector2(0, 44);
+        _furnaceButton.Disabled = true;
+        _furnaceButton.Pressed += () => EmitSignal(SignalName.BuyFurnaceRequested);
+        shopBox.AddChild(_furnaceButton);
+
+        _makeBrickButton = new Button();
+        _makeBrickButton.Text = $"Make Brick ({GameState.BrickClayCost} clay)";
+        _makeBrickButton.CustomMinimumSize = new Vector2(0, 44);
+        _makeBrickButton.Visible = false;
+        _makeBrickButton.Pressed += () => EmitSignal(SignalName.MakeBrickRequested);
+        shopBox.AddChild(_makeBrickButton);
 
         _shopEmptyLabel = new Label();
         _shopEmptyLabel.Text = "No items available";
@@ -352,10 +399,14 @@ public partial class HUD : CanvasLayer
     {
         _villageDialogName.Text = "Sediment, Village Elder";
         _villageDialogText.Text =
-            $"Our river has run dry. We need at least {(int)GameState.VillageFlowThreshold} flow "
-            + "to live again — head to the highlands and change what the river carries.";
+            "Our river loses its strength against bare soil and banks long before it reaches us. "
+            + $"We need at least {(int)GameState.VillageFlowThreshold} flow. "
+            + "Bring clay down from the highlands, fire it into brick, and line the channel with it — "
+            + "water holds its flow when hemmed in by brick. Only then will we have enough.";
         _villageDialog.Visible = true;
         _zoneToggle.Visible = true;
+        // The village explains the furnace, so reveal it in the shop now.
+        OnFurnaceChanged(GameState.Instance.HasFurnace);
     }
 
     private void BuildObjectiveBanner()
@@ -506,6 +557,13 @@ public partial class HUD : CanvasLayer
     {
         _goldLabel.Text = $"Gold: {newValue}";
         _buyButton.Disabled = newValue < GameState.ShovelCost;
+        _furnaceButton.Disabled = newValue < GameState.FurnaceCost;
+    }
+
+    private void OnClayChanged(int newValue)
+    {
+        _clayLabel.Text = $"Clay: {newValue}";
+        _makeBrickButton.Disabled = newValue < GameState.BrickClayCost;
     }
 
     private void OnShovelsChanged(int newValue)
@@ -513,13 +571,28 @@ public partial class HUD : CanvasLayer
         _toolShovelBtn.Visible = newValue > 0;
         _toolShovelBtn.Disabled = newValue == 0;
         _buyButton.Visible = newValue == 0;
-        _shopEmptyLabel.Visible = newValue > 0;
+    }
+
+    private void OnBricksChanged(int newValue)
+    {
+        _brickLabel.Text = $"Bricks: {newValue}";
+        _toolBrickBtn.Disabled = newValue == 0;
+    }
+
+    private void OnFurnaceChanged(bool hasFurnace)
+    {
+        // The furnace only appears in the shop once the village has explained it.
+        _furnaceButton.Visible = !hasFurnace && GameState.Instance.VillageDiscovered;
+        _makeBrickButton.Visible = hasFurnace;
+        _brickLabel.Visible = hasFurnace;
+        _toolBrickBtn.Visible = hasFurnace;
     }
 
     private void OnToolChanged(int tool)
     {
         _toolPanBtn.ButtonPressed = tool == (int)GameState.ActiveTool.Pan;
         _toolShovelBtn.ButtonPressed = tool == (int)GameState.ActiveTool.Shovel;
+        _toolBrickBtn.ButtonPressed = tool == (int)GameState.ActiveTool.Brick;
     }
 
     private void OnRegionUnlocked(int count)

@@ -18,16 +18,27 @@ public partial class TitleScreen : Control
     public override void _Ready()
     {
         // Test/screenshot harnesses boot the project main_scene (now the title).
-        // Skip the menu and hand straight off to the game scene, which keeps the
-        // existing --run-tests / --screenshot handling in main.gd.
+        // Most hand straight off to the game scene (main.gd keeps the --run-tests
+        // / --screenshot / --shot handling). The "title" shot stays here so the
+        // menu itself can be captured.
         var args = OS.GetCmdlineUserArgs();
-        if (args.Contains("--run-tests") || args.Contains("--screenshot"))
+        string shot = ShotScenario(args);
+        if (args.Contains("--run-tests") || args.Contains("--screenshot") || (shot != null && shot != "title"))
         {
             SceneManager.Instance.ChangeScene(GameScene);
             return;
         }
 
         BuildUi();
+
+        if (shot == "title")
+            AddChild(new ScreenshotBootstrap());
+    }
+
+    private static string ShotScenario(string[] args)
+    {
+        int i = System.Array.IndexOf(args, "--shot");
+        return i >= 0 && i + 1 < args.Length ? args[i + 1] : null;
     }
 
     private void BuildUi()

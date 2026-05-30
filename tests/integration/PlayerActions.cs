@@ -27,6 +27,15 @@ public class PlayerActions
     public void BuyShovel()
         => HudNode.EmitSignal(HUD.SignalName.BuyShovelRequested);
 
+    public void BuyFurnace()
+        => HudNode.EmitSignal(HUD.SignalName.BuyFurnaceRequested);
+
+    public void MakeBrick()
+        => HudNode.EmitSignal(HUD.SignalName.MakeBrickRequested);
+
+    public void PlaceBrick(int col, int row)
+        => GridNode.EmitSignal(Grid.SignalName.BrickRequested, col, row);
+
     public void SetTool(int tool)
         => HudNode.EmitSignal(HUD.SignalName.ToolSelected, tool);
 

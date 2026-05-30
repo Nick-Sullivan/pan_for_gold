@@ -3,3 +3,5 @@ bin/
 *.uid
 tests/obj
 _archive*
+screenshots/
+screenshot.png

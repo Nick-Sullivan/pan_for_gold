@@ -1,7 +1,5 @@
-// The third main-quest step completes when the village on region 1 receives
-// enough flow. Drives the QuestSystem.FlowChanged listener directly (the
-// steady-state flow model is a black box): below threshold it stays incomplete;
-// at threshold it completes and finishes the quest line.
+// Reaching region 1 completes the "find the next map" quest (3); delivering
+// enough flow to the village completes the final "supply the village" quest (6).
 public class QuestVillageFlowTest : IIntegrationTest
 {
     public string Name => "quest/village-flow";
@@ -16,16 +14,16 @@ public class QuestVillageFlowTest : IIntegrationTest
         ctx.Actions.Dig(6, 12);
         ctx.Actions.SwitchRegion(1);
         ctx.AssertEqual(1, gs.CurrentRegion, "in region 1");
+        ctx.AssertTrue(gs.QuestsComplete[3], "finding the next map completes quest 3");
 
-        // No flow at the village yet -> objective 2 stays incomplete.
+        // Below threshold -> the village quest stays incomplete.
         gs.TileFlowValues[GameState.VillageRow, GameState.VillageCol] = 0f;
         gs.EmitSignal(GameState.SignalName.FlowChanged);
-        ctx.AssertTrue(!gs.QuestsComplete[2], "quest 2 incomplete below threshold");
+        ctx.AssertTrue(!gs.QuestsComplete[6], "quest 6 incomplete below the flow threshold");
 
-        // Supply enough flow -> objective 2 completes and the line finishes.
+        // At threshold -> the village is supplied.
         gs.TileFlowValues[GameState.VillageRow, GameState.VillageCol] = GameState.VillageFlowThreshold;
         gs.EmitSignal(GameState.SignalName.FlowChanged);
-        ctx.AssertTrue(gs.QuestsComplete[2], "quest 2 complete at threshold");
-        ctx.AssertEqual(-1, QuestSystem.CurrentObjective(), "quest line finished");
+        ctx.AssertTrue(gs.QuestsComplete[6], "quest 6 complete at the flow threshold");
     }
 }

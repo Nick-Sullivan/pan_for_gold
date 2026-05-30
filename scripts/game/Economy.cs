@@ -38,12 +38,53 @@ public class Economy
         gs.EmitSignal(GameState.SignalName.ShovelsChanged, gs.Shovels);
     }
 
+    public void BuyFurnace()
+    {
+        var gs = GameState.Instance;
+        if (gs.HasFurnace || gs.Gold < GameState.FurnaceCost)
+            return;
+        gs.Gold -= GameState.FurnaceCost;
+        gs.EmitSignal(GameState.SignalName.GoldChanged, gs.Gold);
+        gs.HasFurnace = true;
+        gs.EmitSignal(GameState.SignalName.FurnaceChanged, gs.HasFurnace);
+    }
+
+    // Convert clay into a brick at the furnace.
+    public void MakeBrick()
+    {
+        var gs = GameState.Instance;
+        if (!gs.HasFurnace || gs.Clay < GameState.BrickClayCost)
+            return;
+        gs.Clay -= GameState.BrickClayCost;
+        gs.EmitSignal(GameState.SignalName.ClayChanged, gs.Clay);
+        gs.Bricks++;
+        gs.EmitSignal(GameState.SignalName.BricksChanged, gs.Bricks);
+    }
+
     public static float FlowMultiplier(float flow, float maxFlow)
         => (float)Math.Clamp(flow / maxFlow, 0.0, 1.0);
+
+    // A material is pannable in the lowlands only when its source (anywhere — the
+    // gold/clay sources live in the highlands) has a river tile next to it. Route
+    // the river beside a source to "switch on" that material; route it away to
+    // switch it off. Gold works from the start because the highlands map ships
+    // with a river already beside the gold source.
+    public static bool SourceFed(GameState.TileType sourceType)
+    {
+        var gs = GameState.Instance;
+        for (int z = 0; z < MapLayouts.Maps.Length; z++)
+            foreach (var snap in gs.GetZoneData(z))
+                for (int row = 0; row < GameState.Rows; row++)
+                    for (int col = 0; col < GameState.Cols; col++)
+                        if (snap.Tiles[row, col] == sourceType && AdjRiver(col, row, snap.Tiles))
+                            return true;
+        return false;
+    }
 
     public void TickGold(double delta)
     {
         var gs = GameState.Instance;
+        if (!SourceFed(GameState.TileType.GoldSource)) return;
         for (int regionIdx = 0; regionIdx < gs.RegionData.Count; regionIdx++)
         {
             var snap = gs.RegionData[regionIdx];
@@ -78,20 +119,9 @@ public class Economy
     {
         var gs = GameState.Instance;
 
-        // Clay is only produced while a clay source is actually fed by a flowing
-        // river (mirrors the gold source). Merely having a clay source on the map
-        // is not enough — otherwise every bank accrues clay from the start.
-        // snap.Flow holds each region's flow (it's the same array TileFlowValues
-        // points at while that region is active).
-        bool hasActiveClaySource = false;
-        for (int z = 0; z < MapLayouts.Maps.Length && !hasActiveClaySource; z++)
-            foreach (var snap in gs.GetZoneData(z))
-                if (HasActiveSource(GameState.TileType.ClaySource, snap.Tiles, snap.Flow))
-                {
-                    hasActiveClaySource = true;
-                    break;
-                }
-        if (!hasActiveClaySource) return;
+        // Clay is only produced while a river runs beside the clay source
+        // (mirrors gold). Merely having a clay source on the map is not enough.
+        if (!SourceFed(GameState.TileType.ClaySource)) return;
 
         for (int z = 0; z < MapLayouts.Maps.Length; z++)
         {

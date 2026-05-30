@@ -23,6 +23,10 @@ public static class IntegrationTestRunner
         new QuestVillageFlowTest(),
         new ClaySourceTest(),
         new VillageDiscoveryTest(),
+        new FurnaceBrickTest(),
+        new PlaceBrickTest(),
+        new BrickReducesLossTest(),
+        new ClaySwapTest(),
     ];
 
     public static readonly List<IFixture> Fixtures =

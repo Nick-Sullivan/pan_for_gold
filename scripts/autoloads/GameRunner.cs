@@ -121,12 +121,16 @@ public partial class GameRunner : Node
         {
             grid.DigRequested += OnDig;
             grid.PanRequested += OnPan;
+            grid.BrickRequested += OnPlaceBrick;
+            grid.RegionSelected += OnSwitchRegion;
         }
 
         var hud = GetTree().GetFirstNodeInGroup("hud") as HUD;
         if (hud != null)
         {
             hud.BuyShovelRequested += OnBuyShovel;
+            hud.BuyFurnaceRequested += OnBuyFurnace;
+            hud.MakeBrickRequested += OnMakeBrick;
             hud.ToolSelected += OnSetTool;
             hud.RegionSelected += OnSwitchRegion;
             hud.ZoneSwitchRequested += z => _regions.SwitchZone(z);
@@ -151,6 +155,19 @@ public partial class GameRunner : Node
     }
 
     public void OnBuyShovel() => _economy.BuyShovel();
+
+    public void OnBuyFurnace() => _economy.BuyFurnace();
+
+    public void OnMakeBrick() => _economy.MakeBrick();
+
+    private void OnPlaceBrick(int col, int row)
+    {
+        if (!_tiles.CanPlaceBrick(col, row)) return;
+        _tiles.PlaceBrick(col, row);
+        var gs = GameState.Instance;
+        gs.Bricks--;
+        gs.EmitSignal(GameState.SignalName.BricksChanged, gs.Bricks);
+    }
 
     public void OnSetTool(int tool)
     {

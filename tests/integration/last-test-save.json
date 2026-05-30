@@ -2,12 +2,18 @@
   "Gold": 5,
   "Clay": 0,
   "Shovels": 1,
+  "Bricks": 0,
+  "HasFurnace": false,
   "Tool": 0,
   "RiverSpeed": 1,
   "CurrentZone": 0,
   "Quests": [
     true,
     true,
+    true,
+    false,
+    false,
+    false,
     false
   ],
   "VillageDiscovered": false,

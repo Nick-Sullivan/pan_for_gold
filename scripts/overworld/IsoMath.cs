@@ -55,6 +55,7 @@ public static class IsoMath
             GameState.TileType.Gate => new Color(0.55f, 0.20f, 0.20f),
             GameState.TileType.GoldSource => new Color(0.90f, 0.72f, 0.10f),
             GameState.TileType.ClaySource => new Color(0.68f, 0.32f, 0.18f),
+            GameState.TileType.Brick => new Color(0.70f, 0.35f, 0.20f),
             _ => SoilTint(col, row, tiles, flowValues),
         };
         return new Color(base_.R * 0.80f, base_.G * 0.80f, base_.B * 0.80f);
@@ -70,6 +71,7 @@ public static class IsoMath
             GameState.TileType.Gate => new Color(0.55f, 0.20f, 0.20f, 0.35f),
             GameState.TileType.GoldSource => new Color(0.90f, 0.72f, 0.10f, 0.35f),
             GameState.TileType.ClaySource => new Color(0.68f, 0.32f, 0.18f, 0.35f),
+            GameState.TileType.Brick => new Color(0.70f, 0.35f, 0.20f, 0.35f),
             _ => new Color(0.32f, 0.22f, 0.12f, 0.35f),
         };
 

@@ -337,6 +337,9 @@ public partial class TileRenderer : Node2D
             case GameState.TileType.Gate:
                 mat.SetShaderParameter("tint", new Color(0.55f, 0.20f, 0.20f));
                 break;
+            case GameState.TileType.Brick:
+                mat.SetShaderParameter("tint", new Color(0.70f, 0.35f, 0.20f));
+                break;
         }
     }
 }
