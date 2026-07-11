@@ -4,13 +4,10 @@ using System.Collections.Generic;
 [GlobalClass]
 public partial class HUD : CanvasLayer
 {
-    [Signal] public delegate void BuyShovelRequestedEventHandler();
     [Signal] public delegate void ToolSelectedEventHandler(int tool);
     [Signal] public delegate void RegionSelectedEventHandler(int index);
     [Signal] public delegate void ZoneSwitchRequestedEventHandler(int zone);
     [Signal] public delegate void SaveRequestedEventHandler();
-    [Signal] public delegate void BuyFurnaceRequestedEventHandler();
-    [Signal] public delegate void MakeBrickRequestedEventHandler();
 
     private const int Mhw = 22;
     private const int Mhh = 11;
@@ -18,13 +15,13 @@ public partial class HUD : CanvasLayer
     private Label _goldLabel;
     private Label _clayLabel;
     private Label _brickLabel;
-    private Button _buyButton;
-    private Button _furnaceButton;
-    private Button _makeBrickButton;
-    private Label _shopEmptyLabel;
-    private Button _toolPanBtn;
+    private Label _flowLabel;
     private Button _toolShovelBtn;
     private Button _toolBrickBtn;
+    private Button _toolFurnaceBtn;
+    private Button _toolAutopanGoldBtn;
+    private Button _toolAutopanClayBtn;
+    private Button _toolShovelRentalBtn;
     private Control _mapContainer;
     private HBoxContainer _zoneToggle;
     private Button _lowlandsBtn;
@@ -33,10 +30,10 @@ public partial class HUD : CanvasLayer
     private readonly List<Polygon2D> _regionDiamonds = [];
     private readonly List<Control> _tabContents = [];
     private readonly List<Button> _tabButtons = [];
-    private readonly Label[] _questIndicators = new Label[QuestSystem.Defs.Length];
-    private readonly HBoxContainer[] _questRows = new HBoxContainer[QuestSystem.Defs.Length];
 
     private Control _villageSign;
+    private Label _villageTitleLabel;
+    private Label _villageReqLabel;
     private Label _villageFlowLabel;
     private Label _villageGateLabel;
 
@@ -47,6 +44,8 @@ public partial class HUD : CanvasLayer
     private Control _villageDialog;
     private Label _villageDialogName;
     private Label _villageDialogText;
+    private ColorRect _villageDialogPortrait;
+    private StyleBoxFlat _villageDialogBorder;
 
     public override void _Ready()
     {
@@ -54,10 +53,7 @@ public partial class HUD : CanvasLayer
         BuildUi();
 
         var gs = GameState.Instance;
-        gs.GoldChanged += OnGoldChanged;
-        gs.ClayChanged += OnClayChanged;
-        gs.ShovelsChanged += OnShovelsChanged;
-        gs.BricksChanged += OnBricksChanged;
+        gs.RatesChanged += OnRatesChanged;
         gs.FurnaceChanged += OnFurnaceChanged;
         gs.ToolChanged += OnToolChanged;
         gs.RegionUnlocked += OnRegionUnlocked;
@@ -66,6 +62,7 @@ public partial class HUD : CanvasLayer
         gs.QuestChanged += OnQuestChanged;
         gs.FlowChanged += OnFlowChangedSign;
         gs.VillageFound += OnVillageDiscovered;
+        gs.VillageSupplyChanged += (_, __) => OnFlowChangedSign();
 
         // A save where the village is already discovered keeps the Highlands
         // toggle available (without replaying the discovery dialogue).
@@ -73,11 +70,8 @@ public partial class HUD : CanvasLayer
 
         // Initialise the UI from current state. On load, ApplySnapshot's signals
         // fired on the title screen before this game-scene HUD existed.
-        OnGoldChanged(gs.Gold);
-        OnClayChanged(gs.Clay);
-        OnShovelsChanged(gs.Shovels);
         OnFurnaceChanged(gs.HasFurnace);
-        OnBricksChanged(gs.Bricks);
+        OnRatesChanged();
         OnToolChanged((int)gs.Tool);
     }
 
@@ -90,7 +84,6 @@ public partial class HUD : CanvasLayer
                 case Key.Key1: SwitchTab(0); break;
                 case Key.Key2: SwitchTab(1); break;
                 case Key.Key3: SwitchTab(2); break;
-                case Key.Key4: SwitchTab(3); break;
             }
         }
     }
@@ -111,36 +104,43 @@ public partial class HUD : CanvasLayer
         style.SetCornerRadiusAll(6);
 
         var panel = new PanelContainer();
-        panel.Position = new Vector2(950, 10);
+        // Compact panel, anchored flush to the right edge (~1280 wide).
+        panel.Position = new Vector2(1042, 10);
         panel.AddThemeStyleboxOverride("panel", style);
         AddChild(panel);
 
         var margin = new MarginContainer();
-        margin.AddThemeConstantOverride("margin_left", 12);
-        margin.AddThemeConstantOverride("margin_right", 12);
-        margin.AddThemeConstantOverride("margin_top", 12);
-        margin.AddThemeConstantOverride("margin_bottom", 12);
+        margin.AddThemeConstantOverride("margin_left", 8);
+        margin.AddThemeConstantOverride("margin_right", 8);
+        margin.AddThemeConstantOverride("margin_top", 8);
+        margin.AddThemeConstantOverride("margin_bottom", 8);
         panel.AddChild(margin);
 
         var vbox = new VBoxContainer();
-        vbox.CustomMinimumSize = new Vector2(290, 0);
-        vbox.AddThemeConstantOverride("separation", 6);
+        vbox.CustomMinimumSize = new Vector2(212, 0);
+        vbox.AddThemeConstantOverride("separation", 3);
         margin.AddChild(vbox);
 
-        // Gold label — always visible
+        // Rate readouts for the current map (generation vs consumption). No accumulation.
+        _flowLabel = new Label();
+        _flowLabel.Text = "Flow: in 0 / out 0";
+        _flowLabel.AddThemeFontSizeOverride("font_size", 14);
+        _flowLabel.AddThemeColorOverride("font_color", new Color(0.55f, 0.75f, 1.0f));
+        vbox.AddChild(_flowLabel);
+
         _goldLabel = new Label();
-        _goldLabel.Text = "Gold: 0";
-        _goldLabel.AddThemeFontSizeOverride("font_size", 24);
+        _goldLabel.Text = "Gold: +0/s − 0/s";
+        _goldLabel.AddThemeFontSizeOverride("font_size", 15);
         vbox.AddChild(_goldLabel);
 
         _clayLabel = new Label();
-        _clayLabel.Text = "Clay: 0";
-        _clayLabel.AddThemeFontSizeOverride("font_size", 24);
+        _clayLabel.Text = "Clay: +0/s − 0/s";
+        _clayLabel.AddThemeFontSizeOverride("font_size", 15);
         vbox.AddChild(_clayLabel);
 
         _brickLabel = new Label();
-        _brickLabel.Text = "Bricks: 0";
-        _brickLabel.AddThemeFontSizeOverride("font_size", 24);
+        _brickLabel.Text = "Bricks: +0/s − 0/s";
+        _brickLabel.AddThemeFontSizeOverride("font_size", 15);
         _brickLabel.Visible = false;
         vbox.AddChild(_brickLabel);
 
@@ -152,8 +152,8 @@ public partial class HUD : CanvasLayer
         vbox.AddChild(tabHbox);
 
         var tabGroup = new ButtonGroup();
-        string[] tabLabels = ["Equip", "Shop", "Map", "Quests"];
-        for (int i = 0; i < 4; i++)
+        string[] tabLabels = ["Equip", "Build", "Map"];
+        for (int i = 0; i < tabLabels.Length; i++)
         {
             var btn = new Button();
             btn.Text = tabLabels[i];
@@ -179,31 +179,20 @@ public partial class HUD : CanvasLayer
 
         var toolGroup = new ButtonGroup();
 
-        _toolPanBtn = new Button();
-        _toolPanBtn.Text = "Pan";
-        _toolPanBtn.CustomMinimumSize = new Vector2(80, 48);
-        _toolPanBtn.ToggleMode = true;
-        _toolPanBtn.ButtonPressed = true;
-        _toolPanBtn.ButtonGroup = toolGroup;
-        _toolPanBtn.Pressed += () => EmitSignal(SignalName.ToolSelected, (int)GameState.ActiveTool.Pan);
-        toolHbox.AddChild(_toolPanBtn);
-
         _toolShovelBtn = new Button();
-        _toolShovelBtn.Text = "Shovel";
-        _toolShovelBtn.CustomMinimumSize = new Vector2(80, 48);
+        _toolShovelBtn.Text = "Dig";
+        _toolShovelBtn.CustomMinimumSize = new Vector2(60, 32);
         _toolShovelBtn.ToggleMode = true;
+        _toolShovelBtn.ButtonPressed = true;
         _toolShovelBtn.ButtonGroup = toolGroup;
-        _toolShovelBtn.Disabled = true;
-        _toolShovelBtn.Visible = false;
         _toolShovelBtn.Pressed += () => EmitSignal(SignalName.ToolSelected, (int)GameState.ActiveTool.Shovel);
         toolHbox.AddChild(_toolShovelBtn);
 
         _toolBrickBtn = new Button();
         _toolBrickBtn.Text = "Brick";
-        _toolBrickBtn.CustomMinimumSize = new Vector2(80, 48);
+        _toolBrickBtn.CustomMinimumSize = new Vector2(60, 32);
         _toolBrickBtn.ToggleMode = true;
         _toolBrickBtn.ButtonGroup = toolGroup;
-        _toolBrickBtn.Disabled = true;
         _toolBrickBtn.Visible = false;
         _toolBrickBtn.Pressed += () => EmitSignal(SignalName.ToolSelected, (int)GameState.ActiveTool.Brick);
         toolHbox.AddChild(_toolBrickBtn);
@@ -216,39 +205,60 @@ public partial class HUD : CanvasLayer
         saveBtn.Pressed += () => EmitSignal(SignalName.SaveRequested);
         equipBox.AddChild(saveBtn);
 
-        // Tab 2 — Shop
-        var shopBox = new VBoxContainer();
-        shopBox.AddThemeConstantOverride("separation", 6);
-        shopBox.Visible = false;
-        vbox.AddChild(shopBox);
-        _tabContents.Add(shopBox);
+        // Tab 2 — Build. Gold Autopanner is available from the start (it taps the river
+        // for gold); Furnace + Clay Autopanner unlock with the first village. All buttons
+        // share the tool ButtonGroup so only one tool is ever active.
+        var buildBox = new VBoxContainer();
+        buildBox.AddThemeConstantOverride("separation", 6);
+        buildBox.Visible = false;
+        vbox.AddChild(buildBox);
+        _tabContents.Add(buildBox);
 
-        _buyButton = new Button();
-        _buyButton.Text = $"Buy Shovel ({GameState.ShovelCost}g)";
-        _buyButton.CustomMinimumSize = new Vector2(0, 44);
-        _buyButton.Disabled = true;
-        _buyButton.Pressed += () => EmitSignal(SignalName.BuyShovelRequested);
-        shopBox.AddChild(_buyButton);
+        var buildHbox = new HBoxContainer();
+        buildHbox.AddThemeConstantOverride("separation", 6);
+        buildBox.AddChild(buildHbox);
 
-        _furnaceButton = new Button();
-        _furnaceButton.Text = $"Buy Furnace ({GameState.FurnaceCost}g)";
-        _furnaceButton.CustomMinimumSize = new Vector2(0, 44);
-        _furnaceButton.Disabled = true;
-        _furnaceButton.Pressed += () => EmitSignal(SignalName.BuyFurnaceRequested);
-        shopBox.AddChild(_furnaceButton);
+        _toolAutopanGoldBtn = new Button();
+        _toolAutopanGoldBtn.CustomMinimumSize = new Vector2(0, 32);
+        _toolAutopanGoldBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        _toolAutopanGoldBtn.ToggleMode = true;
+        _toolAutopanGoldBtn.ButtonGroup = toolGroup;
+        _toolAutopanGoldBtn.Pressed += () => EmitSignal(SignalName.ToolSelected, (int)GameState.ActiveTool.AutopanGold);
+        buildHbox.AddChild(_toolAutopanGoldBtn);
 
-        _makeBrickButton = new Button();
-        _makeBrickButton.Text = $"Make Brick ({GameState.BrickClayCost} clay)";
-        _makeBrickButton.CustomMinimumSize = new Vector2(0, 44);
-        _makeBrickButton.Visible = false;
-        _makeBrickButton.Pressed += () => EmitSignal(SignalName.MakeBrickRequested);
-        shopBox.AddChild(_makeBrickButton);
+        _toolAutopanClayBtn = new Button();
+        _toolAutopanClayBtn.CustomMinimumSize = new Vector2(0, 32);
+        _toolAutopanClayBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        _toolAutopanClayBtn.ToggleMode = true;
+        _toolAutopanClayBtn.ButtonGroup = toolGroup;
+        _toolAutopanClayBtn.Visible = false;
+        _toolAutopanClayBtn.Pressed += () => EmitSignal(SignalName.ToolSelected, (int)GameState.ActiveTool.AutopanClay);
+        buildHbox.AddChild(_toolAutopanClayBtn);
 
-        _shopEmptyLabel = new Label();
-        _shopEmptyLabel.Text = "No items available";
-        _shopEmptyLabel.AddThemeColorOverride("font_color", new Color(0.5f, 0.5f, 0.5f));
-        _shopEmptyLabel.Visible = false;
-        shopBox.AddChild(_shopEmptyLabel);
+        _toolFurnaceBtn = new Button();
+        _toolFurnaceBtn.CustomMinimumSize = new Vector2(0, 32);
+        _toolFurnaceBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        _toolFurnaceBtn.ToggleMode = true;
+        _toolFurnaceBtn.ButtonGroup = toolGroup;
+        _toolFurnaceBtn.Visible = false;
+        _toolFurnaceBtn.Pressed += () => EmitSignal(SignalName.ToolSelected, (int)GameState.ActiveTool.Furnace);
+        buildHbox.AddChild(_toolFurnaceBtn);
+
+        // Shovel Rental — available from the start; while supplied with gold it unlocks the
+        // dig tool. On its own full-width row so the build tools fit the narrow panel.
+        _toolShovelRentalBtn = new Button();
+        _toolShovelRentalBtn.CustomMinimumSize = new Vector2(0, 32);
+        _toolShovelRentalBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        _toolShovelRentalBtn.ToggleMode = true;
+        _toolShovelRentalBtn.ButtonGroup = toolGroup;
+        _toolShovelRentalBtn.Pressed += () => EmitSignal(SignalName.ToolSelected, (int)GameState.ActiveTool.ShovelRental);
+        buildBox.AddChild(_toolShovelRentalBtn);
+
+        var buildHint = new Label();
+        buildHint.Text = "Autopanners pan gold/clay on soil beside a connected river; yield scales with flow.\nA Shovel Rental, supplied with gold, unlocks the dig tool.\nFurnaces fire bricks (clay); each laid brick uses brick output. Brick-line to keep flow up.";
+        buildHint.AddThemeColorOverride("font_color", new Color(0.5f, 0.5f, 0.5f));
+        buildHint.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+        buildBox.AddChild(buildHint);
 
         // Tab 3 — Map
         var mapBox = new VBoxContainer();
@@ -282,52 +292,12 @@ public partial class HUD : CanvasLayer
         _zoneToggle.AddChild(_highlandsBtn);
 
         _mapContainer = new Control();
-        _mapContainer.CustomMinimumSize = new Vector2(290, Mhh * 2 + 4);
+        _mapContainer.CustomMinimumSize = new Vector2(212, Mhh * 2 + 4);
         _mapContainer.MouseFilter = Control.MouseFilterEnum.Stop;
         _mapContainer.GuiInput += OnMapInput;
         mapBox.AddChild(_mapContainer);
 
         AddRegionDiamond(0);
-
-        // Tab 4 — Quests
-        var questBox = new VBoxContainer();
-        questBox.AddThemeConstantOverride("separation", 10);
-        questBox.Visible = false;
-        vbox.AddChild(questBox);
-        _tabContents.Add(questBox);
-
-        var gs2 = GameState.Instance;
-        for (int i = 0; i < QuestSystem.Defs.Length; i++)
-        {
-            var row = new HBoxContainer();
-            row.AddThemeConstantOverride("separation", 8);
-            questBox.AddChild(row);
-            _questRows[i] = row;
-
-            var indicator = new Label();
-            indicator.Text = gs2.QuestsComplete[i] ? "✓" : "○";
-            indicator.AddThemeColorOverride("font_color",
-                gs2.QuestsComplete[i]
-                    ? new Color(0.85f, 0.70f, 0.20f)
-                    : new Color(0.5f, 0.5f, 0.5f));
-            row.AddChild(indicator);
-            _questIndicators[i] = indicator;
-
-            var textCol = new VBoxContainer();
-            textCol.AddThemeConstantOverride("separation", 2);
-            textCol.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-            row.AddChild(textCol);
-
-            var titleLabel = new Label();
-            titleLabel.Text = QuestSystem.Defs[i].Title;
-            textCol.AddChild(titleLabel);
-
-            var descLabel = new Label();
-            descLabel.Text = QuestSystem.Defs[i].Hint;
-            descLabel.AddThemeColorOverride("font_color", new Color(0.5f, 0.5f, 0.5f));
-            descLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;
-            textCol.AddChild(descLabel);
-        }
 
         BuildVillageSign();
         BuildObjectiveBanner();
@@ -354,6 +324,7 @@ public partial class HUD : CanvasLayer
         style.SetContentMarginAll(16);
         style.BorderColor = new Color(0.85f, 0.65f, 0.15f);
         style.SetBorderWidthAll(2);
+        _villageDialogBorder = style;
 
         var panel = new PanelContainer();
         panel.AddThemeStyleboxOverride("panel", style);
@@ -368,11 +339,11 @@ public partial class HUD : CanvasLayer
         header.AddThemeConstantOverride("separation", 10);
         vb.AddChild(header);
 
-        // Placeholder portrait (per-village art is future work).
-        var portrait = new ColorRect();
-        portrait.Color = new Color(0.55f, 0.45f, 0.30f);
-        portrait.CustomMinimumSize = new Vector2(48, 48);
-        header.AddChild(portrait);
+        // Placeholder portrait, tinted per-village (full per-village art is future work).
+        _villageDialogPortrait = new ColorRect();
+        _villageDialogPortrait.Color = new Color(0.55f, 0.45f, 0.30f);
+        _villageDialogPortrait.CustomMinimumSize = new Vector2(48, 48);
+        header.AddChild(_villageDialogPortrait);
 
         _villageDialogName = new Label();
         _villageDialogName.AddThemeFontSizeOverride("font_size", 20);
@@ -395,18 +366,20 @@ public partial class HUD : CanvasLayer
         _villageDialog.Visible = false;
     }
 
-    private void OnVillageDiscovered()
+    private void OnVillageDiscovered(int id)
     {
-        _villageDialogName.Text = "Sediment, Village Elder";
-        _villageDialogText.Text =
-            "Our river loses its strength against bare soil and banks long before it reaches us. "
-            + $"We need at least {(int)GameState.VillageFlowThreshold} flow. "
-            + "Bring clay down from the highlands, fire it into brick, and line the channel with it — "
-            + "water holds its flow when hemmed in by brick. Only then will we have enough.";
+        var village = VillageDefs.All[id];
+        _villageDialogName.Text = village.Name;
+        _villageDialogName.AddThemeColorOverride("font_color", village.TileColor);
+        _villageDialogText.Text = village.Dialogue;
+        _villageDialogPortrait.Color = village.TileColor;
+        _villageDialogBorder.BorderColor = village.TileColor;
         _villageDialog.Visible = true;
-        _zoneToggle.Visible = true;
-        // The village explains the furnace, so reveal it in the shop now.
-        OnFurnaceChanged(GameState.Instance.HasFurnace);
+
+        // The first village unlocks the Highlands toggle (and the furnace + clay
+        // autopanner, which VillageSystem unlocks via the FurnaceChanged signal).
+        if (id == 0)
+            _zoneToggle.Visible = true;
     }
 
     private void BuildObjectiveBanner()
@@ -482,16 +455,16 @@ public partial class HUD : CanvasLayer
         vb.AddThemeConstantOverride("separation", 4);
         panel.AddChild(vb);
 
-        var title = new Label();
-        title.Text = "Village";
-        title.AddThemeFontSizeOverride("font_size", 14);
-        title.AddThemeColorOverride("font_color", new Color(0.85f, 0.65f, 0.15f));
-        vb.AddChild(title);
+        _villageTitleLabel = new Label();
+        _villageTitleLabel.Text = "Village";
+        _villageTitleLabel.AddThemeFontSizeOverride("font_size", 14);
+        _villageTitleLabel.AddThemeColorOverride("font_color", new Color(0.85f, 0.65f, 0.15f));
+        vb.AddChild(_villageTitleLabel);
 
-        var req = new Label();
-        req.Text = $"Needs ≥{(int)GameState.VillageFlowThreshold} flow";
-        req.AddThemeColorOverride("font_color", new Color(0.7f, 0.7f, 0.7f));
-        vb.AddChild(req);
+        _villageReqLabel = new Label();
+        _villageReqLabel.Text = $"Needs ≥{(int)VillageDefs.All[0].FlowThreshold} flow";
+        _villageReqLabel.AddThemeColorOverride("font_color", new Color(0.7f, 0.7f, 0.7f));
+        vb.AddChild(_villageReqLabel);
 
         _villageFlowLabel = new Label();
         _villageFlowLabel.Text = "Flow: 0";
@@ -553,46 +526,63 @@ public partial class HUD : CanvasLayer
         }
     }
 
-    private void OnGoldChanged(int newValue)
+    // Rates are recomputed every tick; refresh the readouts and the build caps.
+    private void OnRatesChanged()
     {
-        _goldLabel.Text = $"Gold: {newValue}";
-        _buyButton.Disabled = newValue < GameState.ShovelCost;
-        _furnaceButton.Disabled = newValue < GameState.FurnaceCost;
+        var gs = GameState.Instance;
+        _goldLabel.Text = $"Gold: +{gs.GoldGen:0.#}/s − {gs.GoldUse:0.#}/s";
+        _clayLabel.Text = $"Clay: +{gs.ClayGen:0.#}/s − {gs.ClayUse:0.#}/s";
+        _brickLabel.Text = $"Bricks: +{gs.BrickGen:0.#}/s − {gs.BrickUse:0.#}/s";
+
+        var rd = gs.RegionData;
+        if (rd.Count > gs.CurrentRegion)
+        {
+            var snap = rd[gs.CurrentRegion];
+            _flowLabel.Text = $"Flow: in {(int)snap.InputFlow} / out {(int)snap.OutputFlow}";
+        }
+        // Dig is gated on a supplied Shovel Rental: hide the button until shovels are enabled.
+        _toolShovelBtn.Visible = gs.ShovelsEnabled;
+        UpdateBuildButtons();
     }
 
-    private void OnClayChanged(int newValue)
+    private void UpdateBuildButtons()
     {
-        _clayLabel.Text = $"Clay: {newValue}";
-        _makeBrickButton.Disabled = newValue < GameState.BrickClayCost;
-    }
-
-    private void OnShovelsChanged(int newValue)
-    {
-        _toolShovelBtn.Visible = newValue > 0;
-        _toolShovelBtn.Disabled = newValue == 0;
-        _buyButton.Visible = newValue == 0;
-    }
-
-    private void OnBricksChanged(int newValue)
-    {
-        _brickLabel.Text = $"Bricks: {newValue}";
-        _toolBrickBtn.Disabled = newValue == 0;
+        var gs = GameState.Instance;
+        int gold = 0, clay = 0, furnaces = 0, rentals = 0;
+        for (int row = 0; row < GameState.Rows; row++)
+            for (int col = 0; col < GameState.Cols; col++)
+            {
+                int k = GameState.MachineKind(gs.TileMachine[row, col]);
+                if (k == 1) gold++;
+                else if (k == 2) clay++;
+                if (gs.Tiles[row, col] == GameState.TileType.Furnace) furnaces++;
+                if (gs.Tiles[row, col] == GameState.TileType.ShovelRental) rentals++;
+            }
+        int cap = GameState.BuildCapPerType;
+        _toolAutopanGoldBtn.Text = $"Gold {gold}/{cap}";
+        _toolAutopanClayBtn.Text = $"Clay {clay}/{cap}";
+        _toolFurnaceBtn.Text = $"Furn {furnaces}/{cap}";
+        _toolShovelRentalBtn.Text = $"Shovel Rental {rentals}/{cap}";
     }
 
     private void OnFurnaceChanged(bool hasFurnace)
     {
-        // The furnace only appears in the shop once the village has explained it.
-        _furnaceButton.Visible = !hasFurnace && GameState.Instance.VillageDiscovered;
-        _makeBrickButton.Visible = hasFurnace;
-        _brickLabel.Visible = hasFurnace;
+        // "hasFurnace" means the village-tier build tools are unlocked. Reveal the
+        // furnace, the clay autopanner, the brick tool, and the brick rate readout.
+        _toolFurnaceBtn.Visible = hasFurnace;
+        _toolAutopanClayBtn.Visible = hasFurnace;
         _toolBrickBtn.Visible = hasFurnace;
+        _brickLabel.Visible = hasFurnace;
     }
 
     private void OnToolChanged(int tool)
     {
-        _toolPanBtn.ButtonPressed = tool == (int)GameState.ActiveTool.Pan;
         _toolShovelBtn.ButtonPressed = tool == (int)GameState.ActiveTool.Shovel;
         _toolBrickBtn.ButtonPressed = tool == (int)GameState.ActiveTool.Brick;
+        _toolFurnaceBtn.ButtonPressed = tool == (int)GameState.ActiveTool.Furnace;
+        _toolAutopanGoldBtn.ButtonPressed = tool == (int)GameState.ActiveTool.AutopanGold;
+        _toolAutopanClayBtn.ButtonPressed = tool == (int)GameState.ActiveTool.AutopanClay;
+        _toolShovelRentalBtn.ButtonPressed = tool == (int)GameState.ActiveTool.ShovelRental;
     }
 
     private void OnRegionUnlocked(int count)
@@ -605,7 +595,7 @@ public partial class HUD : CanvasLayer
     private void OnRegionSwitched(int index)
     {
         UpdateRegionDiamonds();
-        var showVillage = GameState.Instance.CurrentZone == 0 && index == 1;
+        var showVillage = VillageDefs.ForRegion(GameState.Instance.CurrentZone, index) != null;
         _villageSign.Visible = showVillage;
         if (showVillage) UpdateVillageSign();
     }
@@ -628,25 +618,49 @@ public partial class HUD : CanvasLayer
 
     private void OnQuestChanged(int index)
     {
-        _questIndicators[index].Text = "✓";
-        _questIndicators[index].AddThemeColorOverride("font_color", new Color(0.85f, 0.70f, 0.20f));
+        // The Quests tab was removed; only the objective banner reflects progress.
         UpdateObjectiveBanner();
     }
 
     private void OnFlowChangedSign()
     {
-        if (GameState.Instance.CurrentRegion != 1) return;
+        var gs = GameState.Instance;
+        if (VillageDefs.ForRegion(gs.CurrentZone, gs.CurrentRegion) == null) return;
         UpdateVillageSign();
     }
 
     private void UpdateVillageSign()
     {
         var gs = GameState.Instance;
-        if (gs.RegionData.Count <= 1) return;
-        float flow = gs.TileFlowValues[0, 7];
-        bool open = flow >= GameState.VillageFlowThreshold;
+        var village = VillageDefs.ForRegion(gs.CurrentZone, gs.CurrentRegion);
+        if (village == null || gs.RegionData.Count <= gs.CurrentRegion) return;
+
+        _villageTitleLabel.Text = village.Name;
+        _villageTitleLabel.AddThemeColorOverride("font_color", village.TileColor);
+
+        if (village.GoldDemand > 0f)
+        {
+            // Gold-supplied village: show demand, drain toggle, and supply status.
+            int id = VillageDefs.IndexOf(village);
+            bool on = gs.VillageSupplyOn[id];
+            bool supplied = gs.VillageSupplied[id];
+            _villageReqLabel.Text = $"Needs {(int)village.GoldDemand}/s gold";
+            _villageFlowLabel.Text = on ? "Drain: ON (click to stop)" : "Drain: OFF (click to start)";
+            _villageGateLabel.Text = supplied ? "Supplied!" : "Not yet supplied";
+            _villageGateLabel.AddThemeColorOverride("font_color",
+                supplied ? new Color(0.3f, 0.85f, 0.3f) : new Color(0.8f, 0.3f, 0.3f));
+            return;
+        }
+
+        _villageReqLabel.Text = $"Needs ≥{(int)village.FlowThreshold} flow";
+
+        float flow = gs.TileFlowValues[village.Row, village.Col];
+        bool open = flow >= village.FlowThreshold;
         _villageFlowLabel.Text = $"Flow: {(int)flow}";
-        _villageGateLabel.Text = open ? "Gate: OPEN" : "Gate: CLOSED";
+        // Terminal villages have no gate; show whether the village is satisfied.
+        _villageGateLabel.Text = village.HasEastGate
+            ? (open ? "Gate: OPEN" : "Gate: CLOSED")
+            : (open ? "Supplied!" : "Not yet supplied");
         _villageGateLabel.AddThemeColorOverride("font_color",
             open ? new Color(0.3f, 0.85f, 0.3f) : new Color(0.8f, 0.3f, 0.3f));
     }

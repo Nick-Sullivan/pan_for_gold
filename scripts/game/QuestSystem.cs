@@ -1,54 +1,61 @@
-// The guided main quest line. Definitions live here (single source of truth for
-// the HUD Quests tab and the objective banner); GameState holds only the
-// completion bits. Completion is detected from existing signals — no new system.
+// The guided main quest line, rebuilt around the rate economy: tap the river with
+// autopanners, manage flow (output > 0) to progress, route clay, fire bricks, and
+// supply each village's gold demand. Definitions are the single source of truth for
+// the HUD; GameState holds only the completion bits. Detection rides existing signals.
 public class QuestSystem
 {
-    // Ordered objectives. Length must match GameState.QuestsComplete. Hints
-    // interpolate the live game constants so they always match the real checks.
+    // Ordered objectives. Length must match GameState.QuestsComplete. Hints interpolate
+    // live constants so they always match the real checks.
     public static readonly (string Title, string Hint)[] Defs =
     [
-        ("Pan for Gold",       $"Pan the river banks until you have {GameState.ShovelCost} gold."),
-        ("Buy a Shovel",       "Spend your gold on a shovel in the Shop tab."),
-        ("Carve the Channel",  "Fill in river channels so enough flow reaches the east edge to open the next map."),
-        ("Find the Next Map",  "Follow the river east to the next map and meet its village."),
-        ("Feed the Clay",      "In the highlands, route the river beside the clay source so clay flows to the lowlands."),
-        ("Fire a Brick",       $"Buy a furnace, then fire {GameState.BrickClayCost} clay into a brick."),
-        ("Supply the Village", $"Line the channel with brick so at least {(int)GameState.VillageFlowThreshold} flow reaches the village."),
+        ("Tap the River",            "Pick the Gold Autopanner and build it on soil next to the connected river."),
+        ("Rent a Shovel",            $"Build a Shovel Rental and keep it supplied with gold ({(int)GameState.ShovelRentalGoldPerSec}/s) to unlock the dig tool."),
+        ("Open the Channel",         "Dig through the gap to connect the river to the east edge — flow reaching the edge opens the next map."),
+        ("Find the Next Map",        "Follow the river east to the next map and meet its village."),
+        ("Feed the Clay",            "In the highlands, route the river beside the clay source so clay can be panned."),
+        ("Collect Clay",             "Build a Clay Autopanner on a tile beside a clay-fed river."),
+        ("Fire Bricks",              "Place a furnace and let it draw clay to fire bricks (so you can brick-line channels)."),
+        ("Supply the Village",       $"Build enough gold autopanners to cover the village's demand of {(int)VillageDefs.All[0].GoldDemand}/s — that also opens the gate east."),
+        ("Find the Second Village",  "When the gate opens, carve east into the next map and meet its elder."),
+        ("Supply the Second Village", $"Out-produce Marl's demand of {(int)VillageDefs.All[1].GoldDemand}/s with gold autopanners on the marsh."),
     ];
 
     public void Connect()
     {
         var gs = GameState.Instance;
 
-        // 0: panned enough gold to afford a shovel.
-        gs.GoldChanged += v => { if (v >= GameState.ShovelCost) Complete(0); };
+        // 0/1/5/6: production rates / shovel enablement crossing their thresholds (a gold
+        // autopanner runs, a supplied shovel rental, a clay autopanner runs, a furnace fires
+        // bricks). Driven by the per-tick rate recompute.
+        gs.RatesChanged += () =>
+        {
+            if (gs.GoldGen > 0f) Complete(0);
+            if (gs.ShovelsEnabled) Complete(1);
+            if (gs.ClayGen > 0f) Complete(5);
+            if (gs.BrickGen > 0f) Complete(6);
+        };
 
-        // 1: a shovel purchased.
-        gs.ShovelsChanged += n => { if (n > 0) Complete(1); };
-
-        // 2: the river reached the east edge — i.e. region 1 unlocked (zone 0).
+        // 2: digging the gap connected the river to the edge, opening the next map
+        // (region 1 unlocked, zone 0).
         gs.RegionUnlocked += count => { if (gs.CurrentZone == 0 && count >= 2) Complete(2); };
 
-        // 3: travelled to the next map (the village was discovered).
-        gs.VillageFound += () => Complete(3);
+        // 3 / 8: travelled to the next map (a village was discovered).
+        gs.VillageFound += id =>
+        {
+            if (id == 0) Complete(3);
+            else if (id == 1) Complete(8);
+        };
 
         // 4: a river was routed beside the highlands clay source.
         gs.TileChanged += (_, __) => { if (Economy.SourceFed(GameState.TileType.ClaySource)) Complete(4); };
 
-        // 5: a brick was fired.
-        gs.BricksChanged += n => { if (n > 0) Complete(5); };
-
-        // 6: enough flow delivered to the village on the second map.
-        gs.FlowChanged += OnFlowChanged;
-    }
-
-    private void OnFlowChanged()
-    {
-        var gs = GameState.Instance;
-        if (gs.CurrentZone != 0 || gs.CurrentRegion != 1 || gs.RegionData.Count <= 1)
-            return;
-        if (gs.TileFlowValues[GameState.VillageRow, GameState.VillageCol] >= GameState.VillageFlowThreshold)
-            Complete(6);
+        // 7 / 9: a village's gold demand is met (gen >= demand) on its map.
+        gs.VillageSupplyChanged += (id, supplied) =>
+        {
+            if (!supplied) return;
+            if (id == 0) Complete(7);
+            else if (id == 1) Complete(9);
+        };
     }
 
     // Index of the first incomplete objective, or -1 if the line is finished.

@@ -102,7 +102,7 @@ public partial class TitleScreen : Control
         label.VerticalAlignment = VerticalAlignment.Center;
         if (info.Exists)
         {
-            label.Text = $"Slot {slot + 1}\nGold: {info.Gold}  ·  Region {info.Region + 1}  ·  {info.LastWrite:yyyy-MM-dd HH:mm}";
+            label.Text = $"Slot {slot + 1}\nRegion {info.Region + 1}  ·  {info.LastWrite:yyyy-MM-dd HH:mm}";
         }
         else
         {

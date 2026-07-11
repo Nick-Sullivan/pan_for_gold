@@ -51,18 +51,59 @@ public partial class ScreenshotBootstrap : Node
         {
             case "overworld":
                 break;
-            case "unlocked": // region 0 with region 1 unlocked -> east arrow shows
-                Earn(a);
-                a.Dig(6, 12);
+            case "unlocked": // region 0 with region 1 unlocked (gap dug, flow reaches edge) -> east arrow
+                runner.StepPropagation();
+                a.EnableShovels();
+                a.Dig(6, 6);
+                a.Dig(7, 6);
+                runner.StepPropagation();
                 break;
             case "village": // region 1: village sign, west arrow, discovery dialog
-                Earn(a);
-                a.Dig(6, 12);
+                a.EnableShovels();
+                a.Dig(6, 6);
+                a.Dig(7, 6);
+                runner.StepPropagation();
                 a.SwitchRegion(1);
                 break;
+            case "village2": // region 2: second village (teal tile) + Marl's dialogue
+                a.EnableShovels();
+                a.Dig(6, 6);
+                a.Dig(7, 6);
+                runner.StepPropagation();
+                a.SwitchRegion(1);
+                // Supply village 0 (off the river path) to open the east gate, then carve a
+                // river across row 6 to the now-open edge so region 1's output unlocks region 2.
+                a.BuildGoldAutopanner(0, 5);
+                runner.StepPropagation();
+                for (int c = 1; c <= 13; c++) a.Dig(c, 6);
+                runner.StepPropagation();
+                a.SwitchRegion(2);
+                break;
+            case "furnace": // region 0 with a lit furnace placed + the Furnace tool revealed
+            {
+                var gs = GameState.Instance;
+                gs.HasFurnace = true;
+                gs.EmitSignal(GameState.SignalName.FurnaceChanged, true);
+                a.UseFurnace(11, 11); // (col 11, row 11) is bare soil
+                a.StepTicks(2);
+                break;
+            }
+            case "build": // region 0: Build tab open with gold + clay autopanners + a lit furnace
+            {
+                var gs = GameState.Instance;
+                gs.HasFurnace = true;
+                gs.EmitSignal(GameState.SignalName.FurnaceChanged, true);
+                runner.StepPropagation();
+                a.BuildGoldAutopanner(3, 5);   // Soil beside the watered upstream river
+                a.BuildClayAutopanner(2, 7);   // Soil beside the river
+                a.UseFurnace(11, 11);          // bare soil
+                a.StepTicks(2);
+                // Open the Build tab (keyboard shortcut 2) so its buttons show.
+                GetViewport().PushInput(new InputEventKey { Keycode = Key.Key2, Pressed = true });
+                runner.StepPropagation();
+                return;
+            }
             case "hover": // region 0 with the cursor over the east arrow (hover anim)
-                Earn(a);
-                a.Dig(6, 12);
                 runner.StepPropagation();
                 // East arrow centre = TileCenter(13,6) + colVec*1.4.
                 GetViewport().PushInput(new InputEventMouseMotion { Position = new Vector2(1010, 551) });
@@ -71,10 +112,14 @@ public partial class ScreenshotBootstrap : Node
         runner.StepPropagation();
     }
 
-    private static void Earn(PlayerActions a)
+    // Hide the village discovery modal (its full-screen dim is the HUD's only
+    // ColorRect child) so a scenario can show the map after triggering VillageFound.
+    private void HideDialog()
     {
-        a.PanUntilGold(GameState.ShovelCost, 9, 1);
-        a.BuyShovel();
+        var hud = GetTree().GetFirstNodeInGroup("hud");
+        if (hud == null) return;
+        foreach (var child in hud.GetChildren())
+            if (child is ColorRect cr) cr.Visible = false;
     }
 
     private void Capture(string scenario)

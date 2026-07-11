@@ -4,8 +4,13 @@ using Godot;
 public partial class Grid : Node2D
 {
     [Signal] public delegate void DigRequestedEventHandler(int col, int row);
-    [Signal] public delegate void PanRequestedEventHandler(int col, int row);
     [Signal] public delegate void BrickRequestedEventHandler(int col, int row);
+    [Signal] public delegate void FurnaceRequestedEventHandler(int col, int row);
+    // kind: -1 = remove existing machine (dig tool), 0 = toggle existing machine,
+    //        1 = build gold autopanner, 2 = build clay autopanner.
+    [Signal] public delegate void AutopanRequestedEventHandler(int col, int row, int kind);
+    [Signal] public delegate void ShovelRentalRequestedEventHandler(int col, int row);
+    [Signal] public delegate void VillageToggleRequestedEventHandler(int col, int row);
     [Signal] public delegate void RegionSelectedEventHandler(int index);
 
     private TileRenderer _renderer;
@@ -36,8 +41,6 @@ public partial class Grid : Node2D
 
         var gs = GameState.Instance;
         gs.TileChanged += _OnTileChanged;
-        gs.TileGoldChanged += _OnTileGoldChanged;
-        gs.TileClayChanged += _OnTileClayChanged;
         gs.ToolChanged += _OnToolChanged;
         gs.RegionSwitched += _OnRegionSwitched;
         gs.RegionUnlocked += _OnRegionUnlocked;
@@ -75,6 +78,28 @@ public partial class Grid : Node2D
         if (tile.X < 0 || tile.X >= GameState.Cols || tile.Y < 0 || tile.Y >= GameState.Rows)
             return;
 
+        // Built structures toggle on/off when clicked with ANY tool. Placement (below)
+        // stays tool-gated.
+        var clicked = gs.Tiles[tile.Y, tile.X];
+        if (clicked == GameState.TileType.Furnace)
+        {
+            EmitSignal(SignalName.FurnaceRequested, tile.X, tile.Y);
+            return;
+        }
+        if (gs.TileMachine[tile.Y, tile.X] != 0f)
+        {
+            // Dig tool removes the autopanner; any other tool toggles it on/off.
+            int kind = gs.Tool == GameState.ActiveTool.Shovel ? -1 : 0;
+            EmitSignal(SignalName.AutopanRequested, tile.X, tile.Y, kind);
+            return;
+        }
+        if (clicked == GameState.TileType.Village
+            && VillageDefs.ForRegion(gs.CurrentZone, gs.CurrentRegion)?.GoldDemand > 0f)
+        {
+            EmitSignal(SignalName.VillageToggleRequested, tile.X, tile.Y);
+            return;
+        }
+
         if (gs.Tool == GameState.ActiveTool.Shovel)
         {
             EmitSignal(SignalName.DigRequested, tile.X, tile.Y);
@@ -83,17 +108,21 @@ public partial class Grid : Node2D
         {
             EmitSignal(SignalName.BrickRequested, tile.X, tile.Y);
         }
-        else if (gs.Tool == GameState.ActiveTool.Pan)
+        else if (gs.Tool == GameState.ActiveTool.Furnace)
         {
-            var t = gs.Tiles[tile.Y, tile.X];
-            if (t == GameState.TileType.Bank)
-            {
-                int amount = (int)gs.TileGold[tile.Y, tile.X];
-                EmitSignal(SignalName.PanRequested, tile.X, tile.Y);
-                _FlashTile(tile.X, tile.Y);
-                if (amount > 0)
-                    _ShowGoldPopup(tile.X, tile.Y, amount);
-            }
+            EmitSignal(SignalName.FurnaceRequested, tile.X, tile.Y);
+        }
+        else if (gs.Tool == GameState.ActiveTool.AutopanGold)
+        {
+            EmitSignal(SignalName.AutopanRequested, tile.X, tile.Y, 1);
+        }
+        else if (gs.Tool == GameState.ActiveTool.AutopanClay)
+        {
+            EmitSignal(SignalName.AutopanRequested, tile.X, tile.Y, 2);
+        }
+        else if (gs.Tool == GameState.ActiveTool.ShovelRental)
+        {
+            EmitSignal(SignalName.ShovelRentalRequested, tile.X, tile.Y);
         }
     }
 
@@ -111,18 +140,32 @@ public partial class Grid : Node2D
         }
 
         var gs = GameState.Instance;
+        var tt = gs.Tiles[tile.Y, tile.X];
         bool clickable = false;
-        if (gs.Tool == GameState.ActiveTool.Shovel && gs.Shovels > 0)
+
+        // Built structures are always clickable (any tool toggles them).
+        if (tt == GameState.TileType.Furnace
+            || gs.TileMachine[tile.Y, tile.X] != 0f
+            || (tt == GameState.TileType.Village
+                && VillageDefs.ForRegion(gs.CurrentZone, gs.CurrentRegion)?.GoldDemand > 0f))
+        {
             clickable = true;
-        else if (gs.Tool == GameState.ActiveTool.Brick && gs.Bricks > 0)
-        {
-            var t = gs.Tiles[tile.Y, tile.X];
-            clickable = t == GameState.TileType.Soil || t == GameState.TileType.Bank;
         }
-        else if (gs.Tool == GameState.ActiveTool.Pan)
+        else if (gs.Tool == GameState.ActiveTool.Shovel)
+            clickable = gs.ShovelsEnabled; // digging needs a supplied shovel rental
+        else if (gs.Tool == GameState.ActiveTool.Brick)
         {
-            var t = gs.Tiles[tile.Y, tile.X];
-            clickable = t == GameState.TileType.Bank;
+            // Lay brick on Soil while furnaces have spare brick output.
+            clickable = tt == GameState.TileType.Soil
+                && gs.BrickGen >= gs.BrickUse + GameState.BrickUpkeepPerSec;
+        }
+        else if (gs.Tool == GameState.ActiveTool.Furnace
+            || gs.Tool == GameState.ActiveTool.ShovelRental
+            || gs.Tool == GameState.ActiveTool.AutopanGold
+            || gs.Tool == GameState.ActiveTool.AutopanClay)
+        {
+            // Built on any Soil tile (autopanners only work beside a connected river).
+            clickable = tt == GameState.TileType.Soil;
         }
 
         if (!clickable)
@@ -136,47 +179,10 @@ public partial class Grid : Node2D
         _hoverLine.Visible = true;
     }
 
-    private void _ShowGoldPopup(int col, int row, int amount)
-    {
-        var label = new Label();
-        label.Text = $"+{amount}";
-        label.AddThemeFontSizeOverride("font_size", 16);
-        label.AddThemeColorOverride("font_color", new Color(1.0f, 0.88f, 0.3f));
-        label.AddThemeColorOverride("font_shadow_color", new Color(0, 0, 0, 0.8f));
-        label.AddThemeConstantOverride("shadow_offset_x", 1);
-        label.AddThemeConstantOverride("shadow_offset_y", 1);
-        var center = IsoMath.TileCenter(col, row);
-        label.Position = center - new Vector2(20, 10);
-        AddChild(label);
-
-        var tween = CreateTween();
-        tween.TweenProperty(label, "position", label.Position + new Vector2(0, -40), 0.7);
-        tween.Parallel().TweenProperty(label, "modulate:a", 0.0f, 0.7);
-        tween.TweenCallback(Callable.From(label.QueueFree));
-    }
-
-    private void _FlashTile(int col, int row)
-    {
-        var poly = _renderer.GetTileNode(col, row);
-        var tween = CreateTween();
-        tween.TweenProperty(poly, "modulate", new Color(1.5f, 1.3f, 0.9f), 0.05);
-        tween.TweenProperty(poly, "modulate", Colors.White, 0.2);
-    }
-
     private void _OnTileChanged(int col, int row)
     {
         _renderer.RefreshWall(col, row);
         _renderer.RefreshTileAndNeighbors(col, row);
-    }
-
-    private void _OnTileGoldChanged(int col, int row, int amount)
-    {
-        _renderer.RefreshGold(col, row, amount);
-    }
-
-    private void _OnTileClayChanged(int col, int row, int amount)
-    {
-        _renderer.RefreshClay(col, row, amount);
     }
 
     private void _OnFlowChanged()

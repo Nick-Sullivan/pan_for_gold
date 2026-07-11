@@ -41,5 +41,8 @@ run = [
   "bin\\Godot_v4.5.2-stable_mono_win64\\Godot_v4.5.2-stable_mono_win64.exe --path . --quit-after 600 -- --shot overworld",
   "bin\\Godot_v4.5.2-stable_mono_win64\\Godot_v4.5.2-stable_mono_win64.exe --path . --quit-after 600 -- --shot unlocked",
   "bin\\Godot_v4.5.2-stable_mono_win64\\Godot_v4.5.2-stable_mono_win64.exe --path . --quit-after 600 -- --shot village",
+  "bin\\Godot_v4.5.2-stable_mono_win64\\Godot_v4.5.2-stable_mono_win64.exe --path . --quit-after 600 -- --shot village2",
+  "bin\\Godot_v4.5.2-stable_mono_win64\\Godot_v4.5.2-stable_mono_win64.exe --path . --quit-after 600 -- --shot furnace",
+  "bin\\Godot_v4.5.2-stable_mono_win64\\Godot_v4.5.2-stable_mono_win64.exe --path . --quit-after 600 -- --shot build",
   "bin\\Godot_v4.5.2-stable_mono_win64\\Godot_v4.5.2-stable_mono_win64.exe --path . --quit-after 600 -- --shot hover",
 ]

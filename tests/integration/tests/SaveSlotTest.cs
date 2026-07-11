@@ -29,29 +29,29 @@ public class SaveSlotTest : IIntegrationTest
             ctx.AssertEqual(0, ctx.Runner.ActiveSlot, "ActiveSlot after NewGameInSlot");
             ctx.AssertTrue(save.Exists(0), "slot 0 file written by NewGameInSlot");
 
-            // Mutate: earn gold, buy a shovel, reshape a tile.
-            ctx.Actions.PanUntilGold(GameState.ShovelCost, 9, 1);
-            ctx.Actions.BuyShovel();
+            // Mutate: rent a shovel, reshape a tile, build a machine.
+            ctx.Actions.EnableShovels();
             ctx.Actions.Dig(6, 12); // Soil -> River
+            ctx.Actions.BuildGoldAutopanner(6, 11);
 
-            int goldBefore = gs.Gold;
-            int shovelsBefore = gs.Shovels;
             var tilesBefore = (GameState.TileType[,])gs.Tiles.Clone();
+            var machineBefore = (float[,])gs.TileMachine.Clone();
 
             // Persist via the HUD Save button (exercises HUD -> GameRunner wiring).
             ctx.Actions.Save();
-            ctx.AssertEqual(goldBefore, save.ReadInfo(0).Gold, "slot summary reflects saved gold");
+            ctx.AssertTrue(save.ReadInfo(0).Exists, "slot summary reads as existing after save");
 
             // Wipe, then load the slot back.
             ctx.Runner.StartNewGame();
-            ctx.AssertEqual(0, gs.Gold, "gold wiped by new game");
+            ctx.AssertFloat(0f, gs.TileMachine[11, 6], "machine wiped by new game");
 
             ctx.Runner.LoadSlot(0);
-            ctx.AssertEqual(goldBefore, gs.Gold, "gold restored from slot");
-            ctx.AssertEqual(shovelsBefore, gs.Shovels, "shovels restored from slot");
             for (int row = 0; row < GameState.Rows; row++)
                 for (int col = 0; col < GameState.Cols; col++)
+                {
                     ctx.AssertEqual(tilesBefore[row, col], gs.Tiles[row, col], $"Tile[{row},{col}] restored");
+                    ctx.AssertFloat(machineBefore[row, col], gs.TileMachine[row, col], $"Machine[{row},{col}] restored");
+                }
 
             // Delete clears the slot.
             save.Delete(0);

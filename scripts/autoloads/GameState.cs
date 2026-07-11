@@ -4,39 +4,58 @@ using System.Text.Json;
 
 public partial class GameState : Node
 {
-    public enum TileType { Soil = 0, Bank = 1, River = 2, Channel = 3, Stone = 4, RiverSource = 5, Village = 6, Gate = 7, GoldSource = 8, ClaySource = 9, Brick = 10 }
-    public enum ActiveTool { Pan = 0, Shovel = 1, Brick = 2 }
+    public enum TileType { Soil = 0, Bank = 1, River = 2, Channel = 3, Stone = 4, RiverSource = 5, Village = 6, Gate = 7, GoldSource = 8, ClaySource = 9, Brick = 10, Furnace = 11, ShovelRental = 12 }
+    // Manual panning is gone; gold/clay come from autopanner buildings. Default tool digs.
+    public enum ActiveTool { Shovel = 0, Brick = 1, Furnace = 2, AutopanGold = 3, AutopanClay = 4, ShovelRental = 5 }
 
     public const int Cols = 14;
     public const int Rows = 14;
-    public const float MaxTileGold = 10.0f;
-    public const float RefillTime = 15.0f;
-    public const int ShovelCost = 10;
-    public const int FurnaceCost = 20;
-    public const int BrickClayCost = 3;
-    public const float FillDelayPerStep = 0.25f;
-    public const int BaseSpeedTiles = 4;
-    public const float MaxBankFlow = 10f;
+
+    // --- Rate-economy + scalar-flow constants ---
+    public const int BuildCapPerType = 3;            // max of each building type (gold/clay autopanner, furnace) per map
+    public const float BaseInflow = 1000f;           // input flow at a zone's first region (its source)
+    public const float FlowCostPerTile = 10f;        // flow consumed by each Soil/Bank tile adjacent to a river
+    public const float AutopanYieldPerFlow = 0.02f;  // gold or clay /sec per running autopanner, per unit of input flow
+    public const float FurnaceClayPerSec = 2f;       // clay /sec a running furnace draws (to fire bricks)
+    public const float BrickPerFurnacePerSec = 2f;   // bricks /sec a running, clay-fed furnace produces
+    public const float BrickUpkeepPerSec = 0.25f;    // brick /sec each laid Brick tile consumes
+    public const float ShovelRentalGoldPerSec = 5f;  // gold /sec a Shovel Rental draws; while a map covers it the dig tool unlocks
+
+    public const float MaxBankFlow = 10f;            // kept: shader flow normalisation reference
+    // Back-compat constants still referenced by the (now unused) DAG flow files and a
+    // few tests. New code resolves villages via VillageDefs.ForRegion.
     public const float VillageFlowThreshold = 100f;
-    public const float MaxTileClay = 10.0f;
     public const int VillageRow = 0;
     public const int VillageCol = 7;
 
     public static GameState Instance { get; private set; }
 
-    // Economy
-    public int Gold { get; internal set; }
-    public int Clay { get; internal set; }
-    public int Shovels { get; internal set; }
-    public int Bricks { get; internal set; }
-    public bool HasFurnace { get; internal set; }
-    public ActiveTool Tool { get; internal set; } = ActiveTool.Pan;
-    public float RiverSpeed { get; internal set; } = 1.0f;
+    // Economy — RATES only (no accumulation). Recomputed each tick by Economy.Recompute
+    // for the current map. Autopanners generate; villages/furnaces consume.
+    public float GoldGen { get; internal set; }
+    public float GoldUse { get; internal set; }
+    public float ClayGen { get; internal set; }
+    public float ClayUse { get; internal set; }
+    public float BrickGen { get; internal set; } // bricks/sec produced by running, clay-fed furnaces
+    public float BrickUse { get; internal set; } // bricks/sec consumed by laid Brick tiles
+    public bool HasFurnace { get; internal set; } // means: the furnace/build tools are unlocked
+    // True while some map has a Shovel Rental whose gold demand is covered — gates the dig tool.
+    // Runtime only (recomputed each tick by Economy.Recompute); not serialized.
+    public bool ShovelsEnabled { get; internal set; }
+    public ActiveTool Tool { get; internal set; } = ActiveTool.Shovel;
 
     // Grid data [row, col]
     public TileType[,] Tiles { get; private set; } = new TileType[Rows, Cols];
+    // Per-tile Gold/Clay arrays are retained (zeroed, unused) so the region snapshot
+    // shape and save format stay stable; gold/clay are now rates, not per-tile pools.
     public float[,] TileGold { get; private set; } = new float[Rows, Cols];
     public float[,] TileClay { get; private set; } = new float[Rows, Cols];
+    // Furnace per-tile state: >= 0 enabled (value = accrual progress in [0,1)),
+    // < 0 disabled (value = -(progress + 1)). Only meaningful on Furnace tiles.
+    public float[,] TileFurnace { get; private set; } = new float[Rows, Cols];
+    // Autopanner overlay on a land tile beside a river. Encoding:
+    //   0 = none, +1 = gold (running), -1 = gold (paused), +2 = clay (running), -2 = clay (paused).
+    public float[,] TileMachine { get; private set; } = new float[Rows, Cols];
     public float[,] TileFlowValues { get; private set; } = new float[Rows, Cols];
     public Vector2[,] TileFlowDir { get; private set; } = new Vector2[Rows, Cols];
     public int[,] TileBfsDepth { get; private set; } = new int[Rows, Cols];
@@ -62,15 +81,22 @@ public partial class GameState : Node
     internal List<RegionSnapshot> RegionData => _zoneData[CurrentZone];
     internal List<RegionSnapshot> GetZoneData(int zone) => _zoneData[zone];
 
-    internal record RegionSnapshot(TileType[,] Tiles, float[,] Gold, float[,] Clay, float[,] Flow);
+    // Flow is now a single scalar per region (InputFlow from the previous map, OutputFlow
+    // passed to the next). Added as mutable members so existing constructor calls are
+    // unchanged; recomputed each tick by FlowModel, so not serialized.
+    internal record RegionSnapshot(TileType[,] Tiles, float[,] Gold, float[,] Clay, float[,] Flow, float[,] Furnace, float[,] Machine)
+    {
+        public float InputFlow;
+        public float OutputFlow;
+    }
+
+    // Autopanner overlay decoders (TileMachine encoding).
+    public static int MachineKind(float v) => (int)System.Math.Abs(v); // 0 none, 1 gold, 2 clay
+    public static bool MachineRunning(float v) => v > 0f;
 
     [Signal] public delegate void TileChangedEventHandler(int col, int row);
-    [Signal] public delegate void GoldChangedEventHandler(int newValue);
-    [Signal] public delegate void ClayChangedEventHandler(int newValue);
-    [Signal] public delegate void TileClayChangedEventHandler(int col, int row, int amount);
-    [Signal] public delegate void TileGoldChangedEventHandler(int col, int row, int amount);
-    [Signal] public delegate void ShovelsChangedEventHandler(int newValue);
-    [Signal] public delegate void BricksChangedEventHandler(int newValue);
+    // Emitted after each Economy.Recompute with the current map's rates refreshed.
+    [Signal] public delegate void RatesChangedEventHandler();
     [Signal] public delegate void FurnaceChangedEventHandler(bool hasFurnace);
     [Signal] public delegate void ToolChangedEventHandler(int tool);
     [Signal] public delegate void ZoneChangedEventHandler(int zone);
@@ -79,13 +105,32 @@ public partial class GameState : Node
     [Signal] public delegate void SpeedChangedEventHandler(float value);
     [Signal] public delegate void FlowChangedEventHandler();
     [Signal] public delegate void QuestChangedEventHandler(int index);
-    [Signal] public delegate void VillageFoundEventHandler();
+    [Signal] public delegate void VillageFoundEventHandler(int villageId);
+    [Signal] public delegate void VillageSupplyChangedEventHandler(int villageId, bool supplied);
 
     // Quests — length matches QuestSystem.Defs.
-    public bool[] QuestsComplete { get; private set; } = new bool[7];
+    public bool[] QuestsComplete { get; private set; } = new bool[10];
 
-    // Set the first time the player enters the village (zone 0, region 1).
-    public bool VillageDiscovered { get; internal set; }
+    // One bit per VillageDefs entry; set the first time the player enters that
+    // village's region. Mutated element-wise by VillageSystem (like QuestsComplete).
+    public bool[] VillagesDiscovered { get; private set; } = new bool[VillageDefs.Count];
+
+    // Back-compat: "the first village is discovered" (reveals Highlands + furnace).
+    public bool VillageDiscovered => VillagesDiscovered.Length > 0 && VillagesDiscovered[0];
+
+    // Per-village gold-supply drain toggle (only meaningful for villages with
+    // GoldDemand > 0). Default on, so a thirsty village drains until the player
+    // turns it off. Serialized. VillageSupplied is runtime-only render feedback:
+    // true when the village is currently being supplied (income >= demand).
+    public bool[] VillageSupplyOn { get; private set; } = NewSupplyOn();
+    public bool[] VillageSupplied { get; private set; } = new bool[VillageDefs.Count];
+
+    private static bool[] NewSupplyOn()
+    {
+        var arr = new bool[VillageDefs.Count];
+        for (int i = 0; i < arr.Length; i++) arr[i] = true;
+        return arr;
+    }
 
     public override void _Ready()
     {
@@ -108,6 +153,8 @@ public partial class GameState : Node
         TileGold       = snap.Gold;
         TileClay       = snap.Clay;
         TileFlowValues = snap.Flow;
+        TileFurnace    = snap.Furnace;
+        TileMachine    = snap.Machine;
     }
 
     private static List<Vector2I>[,] InitFlowParent()
@@ -128,13 +175,10 @@ public partial class GameState : Node
     // (see GameRunner.StartNewGame), so here we just clear the bookkeeping.
     public void ResetToNewGame()
     {
-        Gold = 0;
-        Clay = 0;
-        Shovels = 0;
-        Bricks = 0;
+        GoldGen = GoldUse = ClayGen = ClayUse = BrickGen = BrickUse = 0f;
         HasFurnace = false;
-        Tool = ActiveTool.Pan;
-        RiverSpeed = 1.0f;
+        ShovelsEnabled = false;
+        Tool = ActiveTool.Shovel;
         CurrentZone = 0;
         _currentRegion[0] = 0;
         _currentRegion[1] = 0;
@@ -143,7 +187,9 @@ public partial class GameState : Node
         _zoneData[0].Clear();
         _zoneData[1].Clear();
         System.Array.Clear(QuestsComplete);
-        VillageDiscovered = false;
+        System.Array.Clear(VillagesDiscovered);
+        System.Array.Clear(VillageSupplied);
+        for (int i = 0; i < VillageSupplyOn.Length; i++) VillageSupplyOn[i] = true;
         TileFlowParent = InitFlowParent();
     }
 
@@ -157,6 +203,10 @@ public partial class GameState : Node
         public float[][] Gold { get; set; }
         public float[][] Clay { get; set; }
         public float[][] Flow { get; set; }
+        // Per-tile furnace state (null in pre-furnace saves).
+        public float[][] Furnace { get; set; }
+        // Per-tile autopan machine state (null in pre-machine saves).
+        public float[][] Machine { get; set; }
     }
 
     public sealed class ZoneDto
@@ -168,16 +218,16 @@ public partial class GameState : Node
 
     public sealed class Snapshot
     {
-        public int Gold { get; set; }
-        public int Clay { get; set; }
-        public int Shovels { get; set; }
-        public int Bricks { get; set; }
         public bool HasFurnace { get; set; }
         public int Tool { get; set; }
-        public float RiverSpeed { get; set; }
         public int CurrentZone { get; set; }
         public bool[] Quests { get; set; }
+        // Legacy single-village flag, still written/read so older saves load.
         public bool VillageDiscovered { get; set; }
+        // Per-village discovery bits (preferred; null in pre-multi-village saves).
+        public bool[] VillagesDiscovered { get; set; }
+        // Per-village gold-drain toggle (null in pre-supply saves -> default on).
+        public bool[] VillageSupplyOn { get; set; }
         public ZoneDto[] Zones { get; set; }
     }
 
@@ -199,6 +249,8 @@ public partial class GameState : Node
                     Gold = FloatsToJagged(snap.Gold),
                     Clay = FloatsToJagged(snap.Clay),
                     Flow = FloatsToJagged(snap.Flow),
+                    Furnace = FloatsToJagged(snap.Furnace),
+                    Machine = FloatsToJagged(snap.Machine),
                 });
             }
             zones[z] = dto;
@@ -206,16 +258,13 @@ public partial class GameState : Node
 
         return new Snapshot
         {
-            Gold = Gold,
-            Clay = Clay,
-            Shovels = Shovels,
-            Bricks = Bricks,
             HasFurnace = HasFurnace,
             Tool = (int)Tool,
-            RiverSpeed = RiverSpeed,
             CurrentZone = CurrentZone,
             Quests = (bool[])QuestsComplete.Clone(),
             VillageDiscovered = VillageDiscovered,
+            VillagesDiscovered = (bool[])VillagesDiscovered.Clone(),
+            VillageSupplyOn = (bool[])VillageSupplyOn.Clone(),
             Zones = zones,
         };
     }
@@ -225,15 +274,23 @@ public partial class GameState : Node
     // the caller to recompute (GameRunner.StepPropagation).
     public void ApplySnapshot(Snapshot snap)
     {
-        Gold = snap.Gold;
-        Clay = snap.Clay;
-        Shovels = snap.Shovels;
-        Bricks = snap.Bricks;
+        GoldGen = GoldUse = ClayGen = ClayUse = BrickGen = BrickUse = 0f;
+        ShovelsEnabled = false; // recomputed by the StepPropagation the caller runs after load
         HasFurnace = snap.HasFurnace;
         Tool = (ActiveTool)snap.Tool;
-        RiverSpeed = snap.RiverSpeed;
         System.Array.Copy(snap.Quests, QuestsComplete, System.Math.Min(snap.Quests.Length, QuestsComplete.Length));
-        VillageDiscovered = snap.VillageDiscovered;
+        System.Array.Clear(VillagesDiscovered);
+        if (snap.VillagesDiscovered != null)
+            System.Array.Copy(snap.VillagesDiscovered, VillagesDiscovered,
+                System.Math.Min(snap.VillagesDiscovered.Length, VillagesDiscovered.Length));
+        else if (VillagesDiscovered.Length > 0)
+            VillagesDiscovered[0] = snap.VillageDiscovered; // seed from legacy flag
+
+        for (int i = 0; i < VillageSupplyOn.Length; i++) VillageSupplyOn[i] = true;
+        if (snap.VillageSupplyOn != null)
+            System.Array.Copy(snap.VillageSupplyOn, VillageSupplyOn,
+                System.Math.Min(snap.VillageSupplyOn.Length, VillageSupplyOn.Length));
+        System.Array.Clear(VillageSupplied);
 
         for (int z = 0; z < _zoneData.Length; z++)
         {
@@ -247,7 +304,9 @@ public partial class GameState : Node
                     JaggedToTiles(r.Tiles),
                     JaggedToFloats(r.Gold),
                     JaggedToFloats(r.Clay),
-                    JaggedToFloats(r.Flow)));
+                    JaggedToFloats(r.Flow),
+                    r.Furnace != null ? JaggedToFloats(r.Furnace) : new float[Rows, Cols],
+                    r.Machine != null ? JaggedToFloats(r.Machine) : new float[Rows, Cols]));
             }
         }
 
@@ -257,12 +316,9 @@ public partial class GameState : Node
 
         EmitSignal(SignalName.ZoneChanged, CurrentZone);
         EmitSignal(SignalName.RegionSwitched, CurrentRegion);
-        EmitSignal(SignalName.GoldChanged, Gold);
-        EmitSignal(SignalName.ClayChanged, Clay);
-        EmitSignal(SignalName.ShovelsChanged, Shovels);
-        EmitSignal(SignalName.BricksChanged, Bricks);
         EmitSignal(SignalName.FurnaceChanged, HasFurnace);
         EmitSignal(SignalName.ToolChanged, (int)Tool);
+        EmitSignal(SignalName.RatesChanged);
         EmitSignal(SignalName.FlowChanged);
     }
 

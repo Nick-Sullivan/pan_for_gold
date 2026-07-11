@@ -13,7 +13,9 @@ public class WaterPropagation
             var gold  = MapLayouts.BuildGold();
             var clay  = MapLayouts.BuildClay();
             gs.GetZoneData(z).Clear();
-            gs.GetZoneData(z).Add(new GameState.RegionSnapshot(tiles, gold, clay, new float[GameState.Rows, GameState.Cols]));
+            gs.GetZoneData(z).Add(new GameState.RegionSnapshot(tiles, gold, clay,
+                new float[GameState.Rows, GameState.Cols], new float[GameState.Rows, GameState.Cols],
+                new float[GameState.Rows, GameState.Cols]));
         }
         gs.CurrentZone = 0;
         gs.SwapActiveTo(0);

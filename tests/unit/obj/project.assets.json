@@ -5692,11 +5692,11 @@
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "C:\\Users\\nickd\\Documents\\Projects\\pan_for_gold\\tests\\unit\\pan_for_gold.Tests.csproj",
+      "projectUniqueName": "c:\\Users\\nickd\\Documents\\Projects\\pan_for_gold\\tests\\unit\\pan_for_gold.Tests.csproj",
       "projectName": "pan_for_gold.Tests",
-      "projectPath": "C:\\Users\\nickd\\Documents\\Projects\\pan_for_gold\\tests\\unit\\pan_for_gold.Tests.csproj",
+      "projectPath": "c:\\Users\\nickd\\Documents\\Projects\\pan_for_gold\\tests\\unit\\pan_for_gold.Tests.csproj",
       "packagesPath": "C:\\Users\\nickd\\.nuget\\packages\\",
-      "outputPath": "C:\\Users\\nickd\\Documents\\Projects\\pan_for_gold\\tests\\unit\\obj\\",
+      "outputPath": "c:\\Users\\nickd\\Documents\\Projects\\pan_for_gold\\tests\\unit\\obj\\",
       "projectStyle": "PackageReference",
       "configFilePaths": [
         "C:\\Users\\nickd\\AppData\\Roaming\\NuGet\\NuGet.Config"
@@ -5711,8 +5711,8 @@
         "net8.0": {
           "targetAlias": "net8.0",
           "projectReferences": {
-            "C:\\Users\\nickd\\Documents\\Projects\\pan_for_gold\\pan_for_gold.csproj": {
-              "projectPath": "C:\\Users\\nickd\\Documents\\Projects\\pan_for_gold\\pan_for_gold.csproj",
+            "c:\\Users\\nickd\\Documents\\Projects\\pan_for_gold\\pan_for_gold.csproj": {
+              "projectPath": "c:\\Users\\nickd\\Documents\\Projects\\pan_for_gold\\pan_for_gold.csproj",
               "excludeAssets": "analyzers"
             }
           }

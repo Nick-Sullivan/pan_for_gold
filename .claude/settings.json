@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "PowerShell(mise run check; Write-Output \"EXITCODE=$LASTEXITCODE\")"
+      "PowerShell(mise run check; Write-Output \"EXITCODE=$LASTEXITCODE\")",
+      "Bash(echo \"EXIT=$?\")"
     ]
   }
 }

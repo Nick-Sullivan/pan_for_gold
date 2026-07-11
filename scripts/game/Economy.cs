@@ -1,74 +1,116 @@
 using Godot;
-using System;
 
+// Rate-based economy (no accumulation). Every tick, Recompute() derives each map's
+// generation/consumption rates from its scalar input flow and the buildings on it:
+//   gold gen = (running gold autopanners) * AutopanYieldPerFlow * input flow   [if gold source fed]
+//   clay gen = (running clay autopanners) * AutopanYieldPerFlow * input flow   [if clay source fed]
+//   clay use = (running furnaces) * FurnaceClayPerSec ; brick gen if clay covers it
+//   gold use = sum of discovered, supply-on village demand on that map
+// The current map's rates are published to GameState for the HUD; every map's villages
+// are evaluated for "supplied" (gen >= demand) so off-screen progress still counts.
 public class Economy
 {
-    public void Pan(int col, int row)
+    public void Recompute()
     {
         var gs = GameState.Instance;
-        if (gs.Tiles[row, col] != GameState.TileType.Bank) return;
+        bool goldFed = SourceFed(GameState.TileType.GoldSource);
+        bool clayFed = SourceFed(GameState.TileType.ClaySource);
+        bool shovelsEnabled = false;
 
-        int gold = (int)gs.TileGold[row, col];
-        gs.TileGold[row, col] = 0f;
-        gs.EmitSignal(GameState.SignalName.TileGoldChanged, col, row, 0);
-        if (gold > 0)
+        for (int z = 0; z < MapLayouts.Maps.Length; z++)
         {
-            gs.Gold += gold;
-            gs.EmitSignal(GameState.SignalName.GoldChanged, gs.Gold);
+            var zoneData = gs.GetZoneData(z);
+            for (int r = 0; r < zoneData.Count; r++)
+            {
+                var snap = zoneData[r];
+                float input = snap.InputFlow;
+                CountBuildings(snap, out int goldMachines, out int clayMachines, out int furnaces, out int bricks, out int rentals);
+
+                float goldGen = goldFed ? goldMachines * GameState.AutopanYieldPerFlow * input : 0f;
+                float clayGen = clayFed ? clayMachines * GameState.AutopanYieldPerFlow * input : 0f;
+                float clayUse = furnaces * GameState.FurnaceClayPerSec;
+                bool clayCovered = furnaces > 0 && clayGen >= clayUse;
+                float brickGen = clayCovered ? furnaces * GameState.BrickPerFurnacePerSec : 0f;
+                float brickUse = bricks * GameState.BrickUpkeepPerSec;
+
+                // Shovel Rentals draw gold; while this map's gold gen covers its rentals the
+                // dig tool is enabled (OR'd across maps below).
+                float rentalUse = rentals * GameState.ShovelRentalGoldPerSec;
+                if (rentals > 0 && goldGen >= rentalUse) shovelsEnabled = true;
+
+                var village = VillageDefs.ForRegion(z, r);
+                int vid = village != null ? VillageDefs.IndexOf(village) : -1;
+                bool demanding = village != null && village.GoldDemand > 0f && vid >= 0
+                    && gs.VillagesDiscovered[vid] && gs.VillageSupplyOn[vid];
+                float goldUse = (demanding ? village.GoldDemand : 0f) + rentalUse;
+
+                bool isActive = z == gs.CurrentZone && r == gs.CurrentRegion;
+                if (isActive)
+                {
+                    gs.GoldGen = goldGen; gs.GoldUse = goldUse;
+                    gs.ClayGen = clayGen; gs.ClayUse = clayUse;
+                    gs.BrickGen = brickGen; gs.BrickUse = brickUse;
+                }
+
+                // Per-village supplied state (gen meets demand) — drives quest 6/8 and tint.
+                if (village != null && village.GoldDemand > 0f && vid >= 0)
+                {
+                    bool supplied = demanding && goldGen >= village.GoldDemand;
+                    if (supplied != gs.VillageSupplied[vid])
+                    {
+                        gs.VillageSupplied[vid] = supplied;
+                        gs.EmitSignal(GameState.SignalName.VillageSupplyChanged, vid, supplied);
+                        if (isActive)
+                            gs.EmitSignal(GameState.SignalName.TileChanged, village.Col, village.Row);
+                    }
+                }
+            }
         }
 
-        int clay = (int)gs.TileClay[row, col];
-        gs.TileClay[row, col] = 0f;
-        gs.EmitSignal(GameState.SignalName.TileClayChanged, col, row, 0);
-        if (clay > 0)
+        gs.ShovelsEnabled = shovelsEnabled;
+        gs.EmitSignal(GameState.SignalName.RatesChanged);
+    }
+
+    // Counts on a map: running autopanners by kind that are ACTIVE (adjacent to a watered
+    // river), enabled furnaces, laid Brick tiles, and Shovel Rentals. Paused/inactive
+    // machines don't count.
+    private static void CountBuildings(GameState.RegionSnapshot snap, out int gold, out int clay, out int furnaces, out int bricks, out int rentals)
+    {
+        gold = clay = furnaces = bricks = rentals = 0;
+        for (int row = 0; row < GameState.Rows; row++)
+            for (int col = 0; col < GameState.Cols; col++)
+            {
+                float m = snap.Machine[row, col];
+                if (GameState.MachineRunning(m) && AdjWateredRiver(snap, col, row))
+                {
+                    int k = GameState.MachineKind(m);
+                    if (k == 1) gold++;
+                    else if (k == 2) clay++;
+                }
+                if (snap.Tiles[row, col] == GameState.TileType.Furnace && snap.Furnace[row, col] >= 0f)
+                    furnaces++;
+                if (snap.Tiles[row, col] == GameState.TileType.Brick) bricks++;
+                if (snap.Tiles[row, col] == GameState.TileType.ShovelRental) rentals++;
+            }
+    }
+
+    // True if a tile is orthogonally adjacent to a watered river (snap.Flow > 0, set by
+    // FlowModel only on river tiles connected to a source).
+    private static bool AdjWateredRiver(GameState.RegionSnapshot snap, int col, int row)
+    {
+        (int dc, int dr)[] dirs = [(1, 0), (-1, 0), (0, 1), (0, -1)];
+        foreach (var (dc, dr) in dirs)
         {
-            gs.Clay += clay;
-            gs.EmitSignal(GameState.SignalName.ClayChanged, gs.Clay);
+            int nc = col + dc, nr = row + dr;
+            if (nc < 0 || nc >= GameState.Cols || nr < 0 || nr >= GameState.Rows) continue;
+            if (snap.Flow[nr, nc] > 0f) return true;
         }
+        return false;
     }
 
-    public void BuyShovel()
-    {
-        var gs = GameState.Instance;
-        if (gs.Gold < GameState.ShovelCost)
-            return;
-        gs.Gold -= GameState.ShovelCost;
-        gs.EmitSignal(GameState.SignalName.GoldChanged, gs.Gold);
-        gs.Shovels++;
-        gs.EmitSignal(GameState.SignalName.ShovelsChanged, gs.Shovels);
-    }
-
-    public void BuyFurnace()
-    {
-        var gs = GameState.Instance;
-        if (gs.HasFurnace || gs.Gold < GameState.FurnaceCost)
-            return;
-        gs.Gold -= GameState.FurnaceCost;
-        gs.EmitSignal(GameState.SignalName.GoldChanged, gs.Gold);
-        gs.HasFurnace = true;
-        gs.EmitSignal(GameState.SignalName.FurnaceChanged, gs.HasFurnace);
-    }
-
-    // Convert clay into a brick at the furnace.
-    public void MakeBrick()
-    {
-        var gs = GameState.Instance;
-        if (!gs.HasFurnace || gs.Clay < GameState.BrickClayCost)
-            return;
-        gs.Clay -= GameState.BrickClayCost;
-        gs.EmitSignal(GameState.SignalName.ClayChanged, gs.Clay);
-        gs.Bricks++;
-        gs.EmitSignal(GameState.SignalName.BricksChanged, gs.Bricks);
-    }
-
-    public static float FlowMultiplier(float flow, float maxFlow)
-        => (float)Math.Clamp(flow / maxFlow, 0.0, 1.0);
-
-    // A material is pannable in the lowlands only when its source (anywhere — the
-    // gold/clay sources live in the highlands) has a river tile next to it. Route
-    // the river beside a source to "switch on" that material; route it away to
-    // switch it off. Gold works from the start because the highlands map ships
-    // with a river already beside the gold source.
+    // A material is producible only when its source (gold/clay, in the highlands) has a
+    // river tile next to it anywhere. Route the river beside a source to "switch it on".
+    // Gold ships fed; clay needs the highlands routed (quest "feed the clay").
     public static bool SourceFed(GameState.TileType sourceType)
     {
         var gs = GameState.Instance;
@@ -81,88 +123,6 @@ public class Economy
         return false;
     }
 
-    public void TickGold(double delta)
-    {
-        var gs = GameState.Instance;
-        if (!SourceFed(GameState.TileType.GoldSource)) return;
-        for (int regionIdx = 0; regionIdx < gs.RegionData.Count; regionIdx++)
-        {
-            var snap = gs.RegionData[regionIdx];
-            bool isActive = regionIdx == gs.CurrentRegion;
-            var tiles = snap.Tiles;
-            var gold = snap.Gold;
-
-            bool sourceActive = isActive && HasActiveSource(GameState.TileType.GoldSource, tiles, gs.TileFlowValues);
-
-            for (int row = 0; row < GameState.Rows; row++)
-                for (int col = 0; col < GameState.Cols; col++)
-                {
-                    if (tiles[row, col] != GameState.TileType.Bank) continue;
-                    if (!sourceActive && !AdjRiver(col, row, tiles)) continue;
-
-                    int oldInt = (int)gold[row, col];
-                    float baseRate = isActive ? gs.RiverSpeed : 1.0f;
-                    float tileFlow = (!isActive || sourceActive) ? GameState.MaxBankFlow : gs.TileFlowValues[row, col];
-                    float rate = baseRate * FlowMultiplier(tileFlow, GameState.MaxBankFlow);
-                    gold[row, col] = Mathf.Min(
-                        gold[row, col] + (float)delta * rate / GameState.RefillTime * GameState.MaxTileGold,
-                        GameState.MaxTileGold
-                    );
-                    int newInt = (int)gold[row, col];
-                    if (newInt != oldInt && isActive)
-                        gs.EmitSignal(GameState.SignalName.TileGoldChanged, col, row, newInt);
-                }
-        }
-    }
-
-    public void TickClay(double delta)
-    {
-        var gs = GameState.Instance;
-
-        // Clay is only produced while a river runs beside the clay source
-        // (mirrors gold). Merely having a clay source on the map is not enough.
-        if (!SourceFed(GameState.TileType.ClaySource)) return;
-
-        for (int z = 0; z < MapLayouts.Maps.Length; z++)
-        {
-            var zoneData = gs.GetZoneData(z);
-            for (int regionIdx = 0; regionIdx < zoneData.Count; regionIdx++)
-            {
-                var snap = zoneData[regionIdx];
-                bool isActive = z == gs.CurrentZone && regionIdx == gs.CurrentRegion;
-                var tiles = snap.Tiles;
-                var clay = snap.Clay;
-
-                for (int row = 0; row < GameState.Rows; row++)
-                    for (int col = 0; col < GameState.Cols; col++)
-                    {
-                        if (tiles[row, col] != GameState.TileType.Bank) continue;
-
-                        int oldInt = (int)clay[row, col];
-                        float baseRate = isActive ? gs.RiverSpeed : 1.0f;
-                        clay[row, col] = Mathf.Min(
-                            clay[row, col] + (float)delta * baseRate / GameState.RefillTime * GameState.MaxTileClay,
-                            GameState.MaxTileClay
-                        );
-                        int newInt = (int)clay[row, col];
-                        if (newInt != oldInt && isActive)
-                            gs.EmitSignal(GameState.SignalName.TileClayChanged, col, row, newInt);
-                    }
-            }
-        }
-    }
-
-    private static bool HasActiveSource(GameState.TileType sourceType, GameState.TileType[,] tiles, float[,] flowValues)
-    {
-        for (int row = 0; row < GameState.Rows; row++)
-            for (int col = 0; col < GameState.Cols; col++)
-            {
-                if (tiles[row, col] != sourceType) continue;
-                if (AdjFlowingRiver(col, row, tiles, flowValues)) return true;
-            }
-        return false;
-    }
-
     private static bool AdjRiver(int col, int row, GameState.TileType[,] tiles)
     {
         (int dc, int dr)[] dirs = [(1, 0), (-1, 0), (0, 1), (0, -1)];
@@ -172,20 +132,6 @@ public class Economy
             if (nc < 0 || nc >= GameState.Cols || nr < 0 || nr >= GameState.Rows) continue;
             var t = tiles[nr, nc];
             if (t == GameState.TileType.River || t == GameState.TileType.RiverSource) return true;
-        }
-        return false;
-    }
-
-    private static bool AdjFlowingRiver(int col, int row, GameState.TileType[,] tiles, float[,] flowValues)
-    {
-        (int dc, int dr)[] dirs = [(1, 0), (-1, 0), (0, 1), (0, -1)];
-        foreach (var (dc, dr) in dirs)
-        {
-            int nc = col + dc, nr = row + dr;
-            if (nc < 0 || nc >= GameState.Cols || nr < 0 || nr >= GameState.Rows) continue;
-            var t = tiles[nr, nc];
-            if (t != GameState.TileType.River && t != GameState.TileType.RiverSource) continue;
-            if (flowValues == null || flowValues[nr, nc] > 0) return true;
         }
         return false;
     }

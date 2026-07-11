@@ -51,11 +51,13 @@ public static class IsoMath
         {
             GameState.TileType.Bank => new Color(0.62f, 0.52f, 0.36f),
             GameState.TileType.River or GameState.TileType.RiverSource => new Color(0.12f, 0.42f, 0.80f),
-            GameState.TileType.Village => new Color(0.85f, 0.65f, 0.15f),
+            GameState.TileType.Village => VillageDefs.ActiveColor(),
             GameState.TileType.Gate => new Color(0.55f, 0.20f, 0.20f),
             GameState.TileType.GoldSource => new Color(0.90f, 0.72f, 0.10f),
             GameState.TileType.ClaySource => new Color(0.68f, 0.32f, 0.18f),
             GameState.TileType.Brick => new Color(0.70f, 0.35f, 0.20f),
+            GameState.TileType.Furnace => new Color(0.38f, 0.30f, 0.28f),
+            GameState.TileType.ShovelRental => new Color(0.30f, 0.45f, 0.55f),
             _ => SoilTint(col, row, tiles, flowValues),
         };
         return new Color(base_.R * 0.80f, base_.G * 0.80f, base_.B * 0.80f);
@@ -67,11 +69,13 @@ public static class IsoMath
             GameState.TileType.Bank => new Color(0.62f, 0.52f, 0.36f, 0.35f),
             GameState.TileType.River or GameState.TileType.RiverSource => new Color(0.12f, 0.42f, 0.80f, 0.35f),
             GameState.TileType.Stone => new Color(0.38f, 0.36f, 0.34f, 0.35f),
-            GameState.TileType.Village => new Color(0.85f, 0.65f, 0.15f, 0.35f),
+            GameState.TileType.Village => new Color(VillageDefs.ActiveColor(), 0.35f),
             GameState.TileType.Gate => new Color(0.55f, 0.20f, 0.20f, 0.35f),
             GameState.TileType.GoldSource => new Color(0.90f, 0.72f, 0.10f, 0.35f),
             GameState.TileType.ClaySource => new Color(0.68f, 0.32f, 0.18f, 0.35f),
             GameState.TileType.Brick => new Color(0.70f, 0.35f, 0.20f, 0.35f),
+            GameState.TileType.Furnace => new Color(0.85f, 0.45f, 0.18f, 0.35f),
+            GameState.TileType.ShovelRental => new Color(0.30f, 0.45f, 0.55f, 0.35f),
             _ => new Color(0.32f, 0.22f, 0.12f, 0.35f),
         };
 

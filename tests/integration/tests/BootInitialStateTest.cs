@@ -13,10 +13,10 @@ public class BootInitialStateTest : IIntegrationTest
         ctx.AssertEqual(0, gs.CurrentRegion, "CurrentRegion");
         ctx.AssertEqual(1, gs.UnlockedRegions, "UnlockedRegions");
 
-        ctx.AssertEqual(0, gs.Gold, "Gold");
-        ctx.AssertEqual(0, gs.Clay, "Clay");
-        ctx.AssertEqual(0, gs.Shovels, "Shovels");
-        ctx.AssertEqual(GameState.ActiveTool.Pan, gs.Tool, "Tool");
+        ctx.AssertFloat(0f, gs.GoldGen, "GoldGen");
+        ctx.AssertFloat(0f, gs.ClayGen, "ClayGen");
+        ctx.AssertFloat(0f, gs.BrickGen, "BrickGen");
+        ctx.AssertEqual(GameState.ActiveTool.Shovel, gs.Tool, "Tool");
 
         // Starting tiles match the parsed layout for Zone 0, Region 0.
         var expected = MapLayouts.BuildTiles(MapLayouts.Maps[0][0]);

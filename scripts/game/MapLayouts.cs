@@ -10,21 +10,25 @@ public static class MapLayouts
     [
         // Zone 0: Lowlands
         [
-            // Region 0
+            // Region 0 — the river runs east from the source but is broken by a 2-tile gap
+            // (row 6, cols 6-7). The upstream half (cols 1-5) is watered from the start so a
+            // gold autopanner can be built beside it immediately; the downstream half (cols
+            // 8-13) is laid but dry until the player digs the gap to reconnect it, which
+            // carries flow to the east edge and opens the next map.
             [
                 "##############",
-                "#........B....",
-                "#.RRRRRRRR....",
-                "#.R....RB.....",
-                "#.RBR..R......",
-                "#.R.R.........",
-                "SRR.RRRRRRRRRR",
-                "#.R.R..RB.....",
-                "#.R.R.BRB.....",
-                "#.R.R.BBB.....",
-                "#.R.R.........",
-                "#.RRR.........",
-                "#.............",
+                "#............#",
+                "#............#",
+                "#............#",
+                "#............#",
+                "#............#",
+                "SRRRRR..RRRRRR",
+                "#............#",
+                "#............#",
+                "#............#",
+                "#............#",
+                "#............#",
+                "#............#",
                 "##############",
             ],
             // Region 1 — village/gate map; col 0 set dynamically from region 0 exits
@@ -43,6 +47,28 @@ public static class MapLayouts
                 ".............=",
                 ".............=",
                 "#############=",
+            ],
+            // Region 2 — second village (Marl's Lowmarsh). Reached past the region-1
+            // gate; col 0 set dynamically from region 1 exits. East edge is Stone
+            // (terminal — no further gate yet). The village entrance sits on the north
+            // edge (row 0, col 7), flanked by Soil at (0,6)/(0,8) and open below so a
+            // river can feed it from several sides (a single neighbour couldn't reach
+            // Marl's 150 threshold). Stone clusters make a longer, stonier channel.
+            [
+                "######.V.#####",
+                ".............#",
+                "..####.......#",
+                "..#..........#",
+                ".......####..#",
+                ".............#",
+                ".............#",
+                ".............#",
+                "..####.......#",
+                "..#..........#",
+                ".............#",
+                ".......###...#",
+                ".............#",
+                "##############",
             ],
         ],
         // Zone 1: Highlands
@@ -87,7 +113,7 @@ public static class MapLayouts
         '#' => Stone,
         'S' => RiverSource,
         'R' => River,
-        'B' => Bank,
+        'B' => Soil, // Bank tiles removed from gameplay; legacy 'B' maps to Soil
         'V' => Village,
         '=' => Gate,
         'G' => GoldSource,

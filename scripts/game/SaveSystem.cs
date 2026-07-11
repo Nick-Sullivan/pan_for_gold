@@ -16,7 +16,7 @@ public class SaveSystem
     public string BaseDir = ProjectSettings.GlobalizePath("user://saves");
 
     public readonly record struct SlotInfo(
-        bool Exists, int Gold, int Clay, int Zone, int Region, DateTime LastWrite);
+        bool Exists, int Zone, int Region, DateTime LastWrite);
 
     public string SlotPath(int slot) => Path.Combine(BaseDir, $"slot_{slot}.json");
 
@@ -42,7 +42,7 @@ public class SaveSystem
     {
         var path = SlotPath(slot);
         if (!File.Exists(path))
-            return new SlotInfo(false, 0, 0, 0, 0, default);
+            return new SlotInfo(false, 0, 0, default);
 
         try
         {
@@ -51,11 +51,11 @@ public class SaveSystem
             int region = (snap.Zones != null && zone < snap.Zones.Length)
                 ? snap.Zones[zone].CurrentRegion
                 : 0;
-            return new SlotInfo(true, snap.Gold, snap.Clay, zone, region, File.GetLastWriteTime(path));
+            return new SlotInfo(true, zone, region, File.GetLastWriteTime(path));
         }
         catch
         {
-            return new SlotInfo(false, 0, 0, 0, 0, default);
+            return new SlotInfo(false, 0, 0, default);
         }
     }
 }

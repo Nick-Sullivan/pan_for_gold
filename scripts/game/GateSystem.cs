@@ -10,17 +10,26 @@ public class GateSystem
 
     public void Connect()
     {
-        GameState.Instance.FlowChanged += OnFlowChanged;
+        // Listen to RatesChanged: it fires after Economy refreshes VillageSupplied each tick.
+        GameState.Instance.RatesChanged += OnRatesChanged;
     }
 
-    private void OnFlowChanged()
+    private void OnRatesChanged()
     {
         var gs = GameState.Instance;
-        if (gs.CurrentRegion != 1 || gs.RegionData.Count <= 1)
+        if (gs.RegionData.Count <= gs.CurrentRegion)
             return;
 
-        float villageFlow = gs.TileFlowValues[GameState.VillageRow, GameState.VillageCol];
-        bool shouldOpen = villageFlow >= GameState.VillageFlowThreshold;
+        // Only regions whose village was authored with an east gate gate on gold supply;
+        // terminal regions (e.g. region 2) have a Stone edge and must be left alone.
+        var village = VillageDefs.ForRegion(gs.CurrentZone, gs.CurrentRegion);
+        if (village == null || !village.HasEastGate)
+            return;
+
+        // The gate opens once the village's gold demand is met (and shuts if it lapses).
+        // Water only reaches the next map once a river is carved through the open gate.
+        int vid = VillageDefs.IndexOf(village);
+        bool shouldOpen = village.GoldDemand > 0f && vid >= 0 && gs.VillageSupplied[vid];
 
         if (shouldOpen == IsGateOpen)
             return;

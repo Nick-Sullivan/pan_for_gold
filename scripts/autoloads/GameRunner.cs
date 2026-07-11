@@ -15,7 +15,8 @@ public partial class GameRunner : Node
     // Gates real-time ticking so the simulation doesn't run behind the menu.
     public bool Active = false;
 
-    private WaterPropagation _water;
+    private WaterPropagation _water; // kept only for InitTiles (DAG propagation unused)
+    private FlowModel _flow;
     private TileEditor _tiles;
     private Economy _economy;
     private RegionSystem _regions;
@@ -32,6 +33,7 @@ public partial class GameRunner : Node
     {
         Instance = this;
         _water = new WaterPropagation();
+        _flow = new FlowModel();
         _tiles = new TileEditor();
         _economy = new Economy();
         _regions = new RegionSystem();
@@ -48,7 +50,6 @@ public partial class GameRunner : Node
         _water.InitTiles();
         _regions.Init();
 
-        GameState.Instance.RegionSwitched += _water.OnRegionSwitch;
         GameState.Instance.ZoneChanged += OnZoneChanged;
 
         // View signals are wired by the game scene once Grid/HUD exist (main.gd
@@ -62,21 +63,29 @@ public partial class GameRunner : Node
     }
 
     // The per-frame simulation step. Tests drive this directly instead of relying
-    // on real-time _Process.
+    // on real-time _Process. Flow + rates are recomputed on the propagation interval.
     public void Tick(double delta)
     {
-        _economy.TickGold(delta);
-        _economy.TickClay(delta);
         _propagationTimer += delta;
         if (_propagationTimer >= PropagationInterval)
         {
             _propagationTimer -= PropagationInterval;
-            _water.Propagate();
+            Simulate();
         }
     }
 
-    // Force a flow recompute now, independent of the propagation timer.
-    public void StepPropagation() => _water.Propagate();
+    // Recompute scalar flow, then the rate economy, then progress (unlock/sync). Called
+    // on the tick interval, after every tile edit, and on region/zone switch and load.
+    private void Simulate()
+    {
+        _flow.Recompute();
+        _economy.Recompute();
+        _regions.TryUnlock();
+        if (ShouldSyncEntries()) _regions.SyncNextEntries();
+    }
+
+    // Force a full recompute now, independent of the propagation timer (tests, load).
+    public void StepPropagation() => Simulate();
 
     // Reset to a fresh new game and re-run the same init sequence as boot.
     // Used by the test harness before each scenario; the future "New Game"
@@ -120,17 +129,17 @@ public partial class GameRunner : Node
         if (grid != null)
         {
             grid.DigRequested += OnDig;
-            grid.PanRequested += OnPan;
             grid.BrickRequested += OnPlaceBrick;
+            grid.FurnaceRequested += OnFurnace;
+            grid.AutopanRequested += OnAutopan;
+            grid.ShovelRentalRequested += OnShovelRental;
+            grid.VillageToggleRequested += OnVillageToggle;
             grid.RegionSelected += OnSwitchRegion;
         }
 
         var hud = GetTree().GetFirstNodeInGroup("hud") as HUD;
         if (hud != null)
         {
-            hud.BuyShovelRequested += OnBuyShovel;
-            hud.BuyFurnaceRequested += OnBuyFurnace;
-            hud.MakeBrickRequested += OnMakeBrick;
             hud.ToolSelected += OnSetTool;
             hud.RegionSelected += OnSwitchRegion;
             hud.ZoneSwitchRequested += z => _regions.SwitchZone(z);
@@ -140,33 +149,84 @@ public partial class GameRunner : Node
 
     private void OnDig(int col, int row)
     {
+        // Digging needs a shovel rental supplied with gold (req: dig is rented).
+        if (!GameState.Instance.ShovelsEnabled) return;
         if (!_tiles.CanDig(col, row)) return;
         _tiles.Dig(col, row);
-        _regions.TryUnlock();
-        if (ShouldSyncEntries()) _regions.SyncNextEntries();
+        Simulate();
     }
 
     private bool ShouldSyncEntries()
         => GameState.Instance.CurrentRegion != 1 || _gates.IsGateOpen;
 
-    private void OnPan(int col, int row)
-    {
-        _economy.Pan(col, row);
-    }
-
-    public void OnBuyShovel() => _economy.BuyShovel();
-
-    public void OnBuyFurnace() => _economy.BuyFurnace();
-
-    public void OnMakeBrick() => _economy.MakeBrick();
-
     private void OnPlaceBrick(int col, int row)
     {
         if (!_tiles.CanPlaceBrick(col, row)) return;
-        _tiles.PlaceBrick(col, row);
+        _tiles.PlaceBrick(col, row); // brick is exempt from flow consumption
+        Simulate();
+    }
+
+    // Furnace tool on bare Soil places a furnace (free, capped per map); clicking an
+    // existing furnace (with any tool) toggles it on/off.
+    public void OnFurnace(int col, int row)
+    {
         var gs = GameState.Instance;
-        gs.Bricks--;
-        gs.EmitSignal(GameState.SignalName.BricksChanged, gs.Bricks);
+        if (gs.Tiles[row, col] == GameState.TileType.Furnace)
+        {
+            _tiles.ToggleFurnace(col, row);
+            Simulate();
+            return;
+        }
+        if (!_tiles.CanPlaceFurnace(col, row)) return;
+        _tiles.PlaceFurnace(col, row);
+        Simulate();
+    }
+
+    // Autopan: kind 1 = gold, 2 = clay (placement by the matching tool); kind 0 = toggle
+    // an existing machine (front-dispatched from any tool when one sits on the tile).
+    public void OnAutopan(int col, int row, int kind)
+    {
+        var gs = GameState.Instance;
+        if (gs.TileMachine[row, col] != 0f)
+        {
+            // kind -1 = remove (dig tool, only while shovels are rented); else toggle.
+            if (kind < 0)
+            {
+                if (!gs.ShovelsEnabled) return;
+                _tiles.RemoveMachine(col, row);
+            }
+            else
+            {
+                _tiles.ToggleMachine(col, row);
+            }
+            Simulate();
+            return;
+        }
+        if (kind <= 0 || !_tiles.CanPlaceAutopan(col, row, kind)) return;
+        _tiles.PlaceAutopan(col, row, kind);
+        Simulate();
+    }
+
+    // Shovel Rental tool on bare Soil places a rental (free, capped per map). Clicking an
+    // existing rental with the dig tool demolishes it (handled by OnDig -> Dig).
+    public void OnShovelRental(int col, int row)
+    {
+        if (!_tiles.CanPlaceShovelRental(col, row)) return;
+        _tiles.PlaceShovelRental(col, row);
+        Simulate();
+    }
+
+    // Click a gold-trading village (with any tool) to toggle its gold drain on/off.
+    public void OnVillageToggle(int col, int row)
+    {
+        var gs = GameState.Instance;
+        var village = VillageDefs.ForRegion(gs.CurrentZone, gs.CurrentRegion);
+        if (village == null || village.GoldDemand <= 0f) return;
+        int id = VillageDefs.IndexOf(village);
+        gs.VillageSupplyOn[id] = !gs.VillageSupplyOn[id];
+        Simulate();
+        // Refresh the village sign even when the supplied state didn't flip.
+        gs.EmitSignal(GameState.SignalName.VillageSupplyChanged, id, gs.VillageSupplied[id]);
     }
 
     public void OnSetTool(int tool)
@@ -182,13 +242,12 @@ public partial class GameRunner : Node
             ? new Color(0.72f, 0.78f, 0.82f)
             : new Color(0.62f, 0.52f, 0.38f);
         RenderingServer.SetDefaultClearColor(color);
-        _water.Propagate();
+        Simulate();
     }
 
     public void OnSwitchRegion(int index)
     {
         _regions.SwitchTo(index);
-        _regions.TryUnlock();
-        if (ShouldSyncEntries()) _regions.SyncNextEntries();
+        Simulate();
     }
 }

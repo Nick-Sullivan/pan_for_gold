@@ -1,18 +1,14 @@
-Running 15 integration test(s)...
+Running 11 integration test(s)...
 [pass] boot/initial-state
-[pass] economy/pan-earns-gold
-[pass] economy/buy-shovel
 [pass] tile/dig-cycle
-[pass] region/unlock-and-switch
+[pass] tile/dig-removes-autopan
+[pass] flow/output-unlock
+[pass] economy/autopan-gold
+[pass] economy/clay-and-brick
+[pass] economy/brick-upkeep
+[pass] village/gold-supply
+[pass] village/discovery
 [pass] persistence/save-load-roundtrip
 [pass] persistence/save-slots
-[pass] quest/opening-line
-[pass] quest/village-flow
-[pass] economy/clay-needs-active-source
-[pass] village/discovery
-[pass] economy/furnace-and-brick
-[pass] tile/place-brick
-[pass] flow/brick-reduces-loss
-[pass] economy/source-gates-material
-15 tests: 15 passed, 0 failed
+11 tests: 11 passed, 0 failed
 [harness] exit 0

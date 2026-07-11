@@ -7,18 +7,20 @@ public class RegionSystem
         gs.UnlockedRegions = 1;
     }
 
+    // The next region unlocks once this map passes flow downstream — i.e. its output
+    // flow is above 0 (input minus what the bare banks consume). Brick-line the channel
+    // to push output positive.
     public void TryUnlock()
     {
         var gs = GameState.Instance;
         if (gs.CurrentZone != 0) return;
         if (gs.UnlockedRegions > gs.CurrentRegion + 1)
             return;
-
-        var exitRows = ExitRows(gs);
-        if (exitRows.Count == 0)
+        if (gs.RegionData.Count <= gs.CurrentRegion) return;
+        if (gs.RegionData[gs.CurrentRegion].OutputFlow <= 0f)
             return;
 
-        CreateNewRegion(gs, exitRows);
+        CreateNewRegion(gs, ExitRows(gs));
         gs.UnlockedRegions++;
         gs.EmitSignal(GameState.SignalName.RegionUnlocked, gs.UnlockedRegions);
     }
@@ -89,13 +91,25 @@ public class RegionSystem
             tiles = new GameState.TileType[GameState.Rows, GameState.Cols];
         }
 
-        for (int row = 0; row < GameState.Rows; row++)
-            tiles[row, 0] = exitRows.Contains(row)
-                ? GameState.TileType.RiverSource
-                : GameState.TileType.Soil;
+        // Seed the entry (col 0). If the player carved the river to the east edge, mirror
+        // those exit rows; otherwise keep the authored layout's entry (or seed row 6 for a
+        // blank map) so the new region always has a source to build from.
+        if (exitRows.Count > 0)
+        {
+            for (int row = 0; row < GameState.Rows; row++)
+                tiles[row, 0] = exitRows.Contains(row)
+                    ? GameState.TileType.RiverSource
+                    : GameState.TileType.Soil;
+        }
+        else if (zoneMaps.Length <= newIndex)
+        {
+            tiles[6, 0] = GameState.TileType.RiverSource;
+        }
 
         var gold = MapLayouts.BuildGold();
         var clay = MapLayouts.BuildClay();
-        gs.RegionData.Add(new GameState.RegionSnapshot(tiles, gold, clay, new float[GameState.Rows, GameState.Cols]));
+        gs.RegionData.Add(new GameState.RegionSnapshot(tiles, gold, clay,
+            new float[GameState.Rows, GameState.Cols], new float[GameState.Rows, GameState.Cols],
+            new float[GameState.Rows, GameState.Cols]));
     }
 }

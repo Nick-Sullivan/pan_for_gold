@@ -10,11 +10,13 @@ public class VillageDiscoveryTest : IIntegrationTest
         var gs = GameState.Instance;
         ctx.AssertTrue(!gs.VillageDiscovered, "not discovered at start");
 
-        // Unlock region 1 (buy a shovel + dig). Unlocking is not discovering.
-        ctx.Actions.PanUntilGold(GameState.ShovelCost, 9, 1);
-        ctx.Actions.BuyShovel();
-        ctx.Actions.Dig(6, 12);
-        ctx.AssertEqual(2, gs.UnlockedRegions, "region 1 unlocked");
+        // Region 1 unlocks once region 0 passes flow downstream — which needs the river's
+        // gap dug so flow reaches the east edge. Rent a shovel, dig the gap.
+        ctx.Actions.EnableShovels();
+        ctx.Actions.Dig(6, 6);
+        ctx.Actions.Dig(7, 6);
+        ctx.Actions.StepPropagation();
+        ctx.AssertEqual(2, gs.UnlockedRegions, "region 1 unlocked once the dug river reaches the edge");
         ctx.AssertTrue(!gs.VillageDiscovered, "still not discovered before entering the village");
 
         // Entering the village discovers it.

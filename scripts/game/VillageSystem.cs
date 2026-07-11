@@ -1,6 +1,7 @@
-// Detects the first time the player reaches the village (zone 0, region 1) and
-// marks it discovered. The HUD reacts by showing the village character's dialogue
-// and revealing the Highlands toggle. Mirrors QuestSystem/GateSystem.
+// Detects the first time the player reaches any village's region and marks that
+// village discovered. The HUD reacts by showing the village character's dialogue
+// (and, for the first village, revealing the Highlands toggle). Villages and their
+// regions are defined in VillageDefs. Mirrors QuestSystem/GateSystem.
 public class VillageSystem
 {
     public void Connect()
@@ -11,10 +12,21 @@ public class VillageSystem
     private void OnRegionSwitched(int index)
     {
         var gs = GameState.Instance;
-        if (gs.VillageDiscovered) return;
-        if (gs.CurrentZone != 0 || index != 1) return;
+        var village = VillageDefs.ForRegion(gs.CurrentZone, index);
+        if (village == null) return;
 
-        gs.VillageDiscovered = true;
-        gs.EmitSignal(GameState.SignalName.VillageFound);
+        int id = VillageDefs.IndexOf(village);
+        if (gs.VillagesDiscovered[id]) return;
+
+        gs.VillagesDiscovered[id] = true;
+
+        // Meeting the first village unlocks the furnace tool (the elder explains it).
+        if (id == 0 && !gs.HasFurnace)
+        {
+            gs.HasFurnace = true;
+            gs.EmitSignal(GameState.SignalName.FurnaceChanged, true);
+        }
+
+        gs.EmitSignal(GameState.SignalName.VillageFound, id);
     }
 }

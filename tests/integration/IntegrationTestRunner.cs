@@ -13,20 +13,16 @@ public static class IntegrationTestRunner
     public static readonly List<IIntegrationTest> Tests =
     [
         new BootInitialStateTest(),
-        new PanEarnsGoldTest(),
-        new BuyShovelTest(),
         new DigCycleTest(),
-        new RegionUnlockSwitchTest(),
+        new DigRemovesAutopanTest(),
+        new FlowOutputUnlockTest(),
+        new AutopanGoldTest(),
+        new ClayAndBrickTest(),
+        new BrickUpkeepTest(),
+        new VillageSupplyTest(),
+        new VillageDiscoveryTest(),
         new SaveLoadRoundTripTest(),
         new SaveSlotTest(),
-        new QuestShovelEdgeTest(),
-        new QuestVillageFlowTest(),
-        new ClaySourceTest(),
-        new VillageDiscoveryTest(),
-        new FurnaceBrickTest(),
-        new PlaceBrickTest(),
-        new BrickReducesLossTest(),
-        new ClaySwapTest(),
     ];
 
     public static readonly List<IFixture> Fixtures =

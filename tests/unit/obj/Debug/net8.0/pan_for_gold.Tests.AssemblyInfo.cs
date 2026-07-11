@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("pan_for_gold.Tests")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+b60da59f72c89f9277d1d85c187830ae502324c3")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+59bd6c87595138158bbc415e75da1bb17ed1d023")]
 [assembly: System.Reflection.AssemblyProductAttribute("pan_for_gold.Tests")]
 [assembly: System.Reflection.AssemblyTitleAttribute("pan_for_gold.Tests")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

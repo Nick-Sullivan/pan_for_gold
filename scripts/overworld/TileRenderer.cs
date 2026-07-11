@@ -20,15 +20,16 @@ public partial class TileRenderer : Node2D
     private const int WallH = 12;
 
     private Polygon2D[,] _tileNodes;
-    private Label[,] _tileLabels;
     private readonly List<Polygon2D> _seWall = [];
     private readonly List<Polygon2D> _swWall = [];
     private readonly List<Node2D> _previewNodes = [];
+    // Autopan machine overlays drawn on top of river tiles, keyed by (col, row).
+    private readonly Dictionary<(int, int), Node2D> _machineOverlays = [];
+    private double _animTime;
 
     public void Build()
     {
         _tileNodes = new Polygon2D[GameState.Rows, GameState.Cols];
-        _tileLabels = new Label[GameState.Rows, GameState.Cols];
         BuildWall();
         BuildTiles();
     }
@@ -79,22 +80,8 @@ public partial class TileRenderer : Node2D
                 poly.Material = mat;
                 AddChild(poly);
 
-                var center = IsoMath.TileCenter(col, row);
-                var label = new Label();
-                label.Position = center - new Vector2(30, 10);
-                label.Size = new Vector2(60, 20);
-                label.HorizontalAlignment = HorizontalAlignment.Center;
-                label.VerticalAlignment = VerticalAlignment.Center;
-                label.AddThemeFontSizeOverride("font_size", 10);
-                label.Visible = tileType is GameState.TileType.Bank or GameState.TileType.River
-                    or GameState.TileType.RiverSource or GameState.TileType.Village;
-                label.Text = tileType == GameState.TileType.Bank
-                    ? goldAmount.ToString()
-                    : gs.TileFlowValues[row, col].ToString();
-                AddChild(label);
-
                 _tileNodes[row, col] = poly;
-                _tileLabels[row, col] = label;
+                UpdateMachineOverlay(col, row);
             }
     }
 
@@ -107,13 +94,7 @@ public partial class TileRenderer : Node2D
         var mat = (ShaderMaterial)poly.Material;
         mat.Shader = ShaderFor(tileType);
         ApplyParams(mat, tileType, goldAmount, col, row);
-        var center = IsoMath.TileCenter(col, row);
-        _tileLabels[row, col].Position = center - new Vector2(30, 10);
-        _tileLabels[row, col].Visible = tileType is GameState.TileType.Bank
-            or GameState.TileType.River or GameState.TileType.RiverSource;
-        _tileLabels[row, col].Text = tileType == GameState.TileType.Bank
-            ? goldAmount.ToString()
-            : gs.TileFlowValues[row, col].ToString();
+        UpdateMachineOverlay(col, row);
     }
 
     public void RefreshTileAndNeighbors(int col, int row)
@@ -148,15 +129,6 @@ public partial class TileRenderer : Node2D
             _swWall[row].Color = IsoMath.WallColor(gs.Tiles[row, col], col, row, gs.Tiles, gs.TileFlowValues);
     }
 
-    public void RefreshGold(int col, int row, int amount)
-    {
-        ((ShaderMaterial)_tileNodes[row, col].Material)
-            .SetShaderParameter("gold_ratio", (float)amount / GameState.MaxTileGold);
-        _tileLabels[row, col].Text = amount.ToString();
-    }
-
-    public void RefreshClay(int col, int row, int amount) { }
-
     public void RefreshAllTiles()
     {
         for (int row = 0; row < GameState.Rows; row++)
@@ -186,7 +158,6 @@ public partial class TileRenderer : Node2D
                     mat.SetShaderParameter("east", conn.east);
                     mat.SetShaderParameter("west", conn.west);
                     mat.SetShaderParameter("soil_tint", IsoMath.SoilTint(col, row, gs.Tiles, gs.TileFlowValues));
-                    _tileLabels[row, col].Text = gs.TileFlowValues[row, col].ToString();
                 }
                 else if (tileType == GameState.TileType.Soil)
                 {
@@ -305,7 +276,7 @@ public partial class TileRenderer : Node2D
         switch (tileType)
         {
             case GameState.TileType.Bank:
-                mat.SetShaderParameter("gold_ratio", (float)goldAmount / GameState.MaxTileGold);
+                mat.SetShaderParameter("gold_ratio", 0f); // no per-tile gold pool any more
                 break;
             case GameState.TileType.GoldSource:
                 mat.SetShaderParameter("tint", new Color(0.90f, 0.72f, 0.10f));
@@ -332,7 +303,12 @@ public partial class TileRenderer : Node2D
                 mat.SetShaderParameter("tint", new Color(0.55f, 0.52f, 0.50f));
                 break;
             case GameState.TileType.Village:
-                mat.SetShaderParameter("tint", new Color(0.85f, 0.65f, 0.15f));
+                var vc = VillageDefs.ActiveColor();
+                var vdef = VillageDefs.ForRegion(gs.CurrentZone, gs.CurrentRegion);
+                // A gold-trading village dims while it isn't being supplied.
+                if (vdef != null && vdef.GoldDemand > 0f && !gs.VillageSupplied[VillageDefs.IndexOf(vdef)])
+                    vc = new Color(vc.R * 0.5f, vc.G * 0.5f, vc.B * 0.5f);
+                mat.SetShaderParameter("tint", vc);
                 break;
             case GameState.TileType.Gate:
                 mat.SetShaderParameter("tint", new Color(0.55f, 0.20f, 0.20f));
@@ -340,6 +316,114 @@ public partial class TileRenderer : Node2D
             case GameState.TileType.Brick:
                 mat.SetShaderParameter("tint", new Color(0.70f, 0.35f, 0.20f));
                 break;
+            case GameState.TileType.Furnace:
+                // Lit orange while enabled (TileFurnace >= 0), dark grey when disabled.
+                // The orange is animated each frame in _Process to look like it's burning.
+                bool furnaceEnabled = gs.TileFurnace[row, col] >= 0f;
+                mat.SetShaderParameter("tint", furnaceEnabled
+                    ? new Color(0.95f, 0.50f, 0.15f)
+                    : new Color(0.30f, 0.28f, 0.27f));
+                break;
+            case GameState.TileType.ShovelRental:
+                mat.SetShaderParameter("tint", new Color(0.30f, 0.45f, 0.55f));
+                break;
         }
+    }
+
+    // Per-frame animation: flicker enabled furnaces and spin/pulse running machines so
+    // it's obvious which structures are operating. Disabled/paused ones stay static.
+    public override void _Process(double delta)
+    {
+        if (_tileNodes == null) return;
+        _animTime += delta;
+        var gs = GameState.Instance;
+        if (gs == null) return;
+
+        float flicker = 0.82f + 0.18f * Mathf.Sin((float)_animTime * 6f);
+        for (int row = 0; row < GameState.Rows; row++)
+            for (int col = 0; col < GameState.Cols; col++)
+            {
+                if (gs.Tiles[row, col] != GameState.TileType.Furnace) continue;
+                if (gs.TileFurnace[row, col] < 0f) continue; // disabled = static grey
+                ((ShaderMaterial)_tileNodes[row, col].Material)
+                    .SetShaderParameter("tint", new Color(0.95f * flicker, 0.50f * flicker, 0.15f * flicker));
+            }
+
+        foreach (var ((col, row), node) in _machineOverlays)
+        {
+            var wheel = (Polygon2D)node.GetChild(1);
+            float m = gs.TileMachine[row, col];
+            // Active only when running AND beside a watered (connected) river.
+            bool active = m > 0f && AdjWatered(col, row);
+            if (active)
+            {
+                wheel.Color = GameState.MachineKind(m) == 2
+                    ? new Color(0.72f, 0.45f, 0.30f)  // clay
+                    : new Color(0.95f, 0.85f, 0.30f); // gold
+                wheel.Rotation = (float)_animTime * 3.0f;
+                float s = 1f + 0.14f * Mathf.Sin((float)_animTime * 5f);
+                wheel.Scale = new Vector2(s, s);
+            }
+            else // paused or not beside water = idle grey, static
+            {
+                wheel.Color = new Color(0.45f, 0.42f, 0.38f);
+                wheel.Rotation = 0.78f;
+                wheel.Scale = Vector2.One;
+            }
+        }
+    }
+
+    private static bool AdjWatered(int col, int row)
+    {
+        var gs = GameState.Instance;
+        (int dc, int dr)[] dirs = [(1, 0), (-1, 0), (0, 1), (0, -1)];
+        foreach (var (dc, dr) in dirs)
+        {
+            int nc = col + dc, nr = row + dr;
+            if (nc < 0 || nc >= GameState.Cols || nr < 0 || nr >= GameState.Rows) continue;
+            if (gs.TileFlowValues[nr, nc] > 0f) return true;
+        }
+        return false;
+    }
+
+    // Create / update / remove the machine overlay for a tile based on TileMachine.
+    private void UpdateMachineOverlay(int col, int row)
+    {
+        var gs = GameState.Instance;
+        float m = gs.TileMachine[row, col];
+        _machineOverlays.TryGetValue((col, row), out var node);
+
+        if (m == 0f)
+        {
+            if (node != null) { node.QueueFree(); _machineOverlays.Remove((col, row)); }
+            return;
+        }
+
+        if (node == null)
+        {
+            node = BuildMachineNode();
+            node.Position = IsoMath.TileCenter(col, row);
+            AddChild(node);
+            _machineOverlays[(col, row)] = node;
+        }
+        // Wheel colour/animation (kind + active state) is driven each frame in _Process.
+    }
+
+    // A small "panning wheel" sprite: a dark housing (child 0) with a bright wheel
+    // (child 1) that _Process rotates while the machine runs. Drawn above the tile.
+    private static Node2D BuildMachineNode()
+    {
+        var node = new Node2D { ZIndex = 1 };
+        node.AddChild(new Polygon2D
+        {
+            Polygon = [new(-13, -8), new(13, -8), new(13, 8), new(-13, 8)],
+            Color = new Color(0.24f, 0.22f, 0.21f),
+        });
+        node.AddChild(new Polygon2D
+        {
+            Polygon = [new(0, -10), new(10, 0), new(0, 10), new(-10, 0)],
+            Color = new Color(0.95f, 0.85f, 0.30f),
+        });
+        return node;
     }
 }
